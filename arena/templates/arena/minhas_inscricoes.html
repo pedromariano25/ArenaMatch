@@ -1,0 +1,34 @@
+{% extends "arena/base.html" %}
+{% load arena_extras %}
+
+{% block title %}Minhas inscrições{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-14">
+  <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">Minhas inscrições</h1>
+  <p class="mt-1 text-slate-500">Acompanhe suas próximas partidas e o seu histórico de jogos.</p>
+
+  <h2 class="mt-10 text-xs font-bold uppercase tracking-wider text-slate-400">Próximas partidas</h2>
+  <div class="mt-4 space-y-3">
+    {% for inscricao in proximas %}
+      {% include "arena/_item_inscricao.html" %}
+    {% empty %}
+      <div class="rounded-2xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center">
+        <span class="mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">{% icone "calendario" "size-6" %}</span>
+        <p class="mt-4 font-bold text-slate-900">Nenhuma partida marcada</p>
+        <p class="mt-1 text-sm text-slate-500">Que tal entrar em um jogo ainda esta semana?</p>
+        <a href="{% url 'arena:vitrine' %}#partidas" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700">Encontrar partida {% icone "seta" "size-4" %}</a>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if anteriores %}
+    <h2 class="mt-12 text-xs font-bold uppercase tracking-wider text-slate-400">Histórico</h2>
+    <div class="mt-4 space-y-3 opacity-75">
+      {% for inscricao in anteriores %}
+        {% include "arena/_item_inscricao.html" %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

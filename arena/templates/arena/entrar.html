@@ -1,0 +1,35 @@
+{% extends "arena/base.html" %}
+{% load arena_extras %}
+
+{% block title %}Entrar{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 py-12 sm:py-16">
+  <div class="text-center">
+    <span class="mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/30">{% icone "bola" "size-6" %}</span>
+    <h1 class="mt-5 text-2xl font-extrabold tracking-tight text-slate-900">Bem-vindo de volta</h1>
+    <p class="mt-1 text-sm text-slate-500">Entre para reservar sua vaga nas partidas.</p>
+  </div>
+
+  <form method="post" class="mt-8 space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5 sm:p-8">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="rounded-xl bg-rose-50 p-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+        {% for erro in form.non_field_errors %}<p>{{ erro }}</p>{% endfor %}
+      </div>
+    {% endif %}
+    {% include "arena/_campo.html" with campo=form.username %}
+    {% include "arena/_campo.html" with campo=form.password %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="w-full rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-600/30 transition hover:bg-emerald-700">Entrar</button>
+    <p class="text-center text-sm text-slate-500">
+      Ainda não tem conta?
+      <a href="{% url 'arena:cadastro' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-bold text-emerald-700 hover:text-emerald-800">Cadastre-se</a>
+    </p>
+  </form>
+
+  <p class="mt-6 text-center text-xs text-slate-400">
+    É gestor de arena? <a href="{% url 'admin:index' %}" class="font-semibold text-slate-600 hover:text-slate-900">Acesse o painel do gestor</a>
+  </p>
+</div>
+{% endblock %}

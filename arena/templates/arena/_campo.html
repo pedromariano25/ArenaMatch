@@ -1,0 +1,13 @@
+{% load arena_extras %}
+<div>
+  <label for="{{ campo.id_for_label }}" class="mb-1.5 block text-sm font-semibold text-slate-700">
+    {{ campo.label }}{% if not campo.field.required %} <span class="font-normal text-slate-400">(opcional)</span>{% endif %}
+  </label>
+  {{ campo|estilizar }}
+  {% if campo.help_text %}
+    <div class="mt-1.5 text-xs leading-relaxed text-slate-500 [&_ul]:list-disc [&_ul]:space-y-0.5 [&_ul]:pl-4">{{ campo.help_text|safe }}</div>
+  {% endif %}
+  {% for erro in campo.errors %}
+    <p class="mt-1.5 text-xs font-semibold text-rose-600">{{ erro }}</p>
+  {% endfor %}
+</div>

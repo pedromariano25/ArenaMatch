@@ -1,0 +1,70 @@
+{% load arena_extras %}<!doctype html>
+<html lang="pt-BR" class="scroll-smooth">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Partidas abertas{% endblock %} · ArenaMatch</title>
+  <meta name="description" content="Encontre partidas de futebol abertas perto de você e reserve sua vaga em segundos.">
+  <meta name="theme-color" content="#022c22">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%BD%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
+  <style type="text/tailwindcss">
+    @theme {
+      --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body class="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-800 antialiased selection:bg-emerald-200">
+  <header class="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur-md">
+    <nav class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+      <a href="{% url 'arena:vitrine' %}" class="flex items-center gap-2.5">
+        <span class="grid size-9 place-items-center rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/30">{% icone "bola" "size-5" %}</span>
+        <span class="text-lg font-extrabold tracking-tight text-slate-900">Arena<span class="text-emerald-600">Match</span></span>
+      </a>
+      <div class="flex items-center gap-1 text-sm font-semibold sm:gap-2">
+        <a href="{% url 'arena:vitrine' %}" class="hidden rounded-lg px-3 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 sm:block">Partidas</a>
+        {% if user.is_authenticated %}
+          <a href="{% url 'arena:minhas_inscricoes' %}" class="whitespace-nowrap rounded-lg px-3 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"><span class="sm:hidden">Inscrições</span><span class="hidden sm:inline">Minhas inscrições</span></a>
+          <span class="hidden items-center gap-2 pl-2 md:flex">
+            <span class="grid size-8 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">{{ user.iniciais }}</span>
+            <span class="text-slate-700">{{ user.nome_publico }}</span>
+          </span>
+          <form method="post" action="{% url 'arena:sair' %}">
+            {% csrf_token %}
+            <button type="submit" class="rounded-lg px-3 py-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">Sair</button>
+          </form>
+        {% else %}
+          <a href="{% url 'arena:entrar' %}?next={{ request.get_full_path|urlencode }}" class="rounded-lg px-3 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">Entrar</a>
+          <a href="{% url 'arena:cadastro' %}" class="rounded-xl bg-emerald-600 px-4 py-2 text-white shadow-sm shadow-emerald-600/30 transition hover:bg-emerald-700">Criar conta</a>
+        {% endif %}
+      </div>
+    </nav>
+  </header>
+
+  {% if messages %}
+    <div class="mx-auto mt-4 w-full max-w-6xl space-y-2 px-4 sm:px-6">
+      {% for message in messages %}
+        <div role="status" class="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm font-medium shadow-sm {{ message.tags|classes_mensagem }}">
+          {% if "success" in message.tags %}{% icone "check" "size-5 shrink-0" %}{% elif "error" in message.tags %}{% icone "x" "size-5 shrink-0" %}{% elif "warning" in message.tags %}{% icone "alerta" "size-5 shrink-0" %}{% else %}{% icone "info" "size-5 shrink-0" %}{% endif %}
+          <p>{{ message }}</p>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <main class="flex-1">{% block content %}{% endblock %}</main>
+
+  <footer class="mt-20 border-t border-slate-200 bg-white">
+    <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p class="flex items-center gap-2"><span class="text-emerald-600">{% icone "bola" "size-4" %}</span> © {% now "Y" %} ArenaMatch · Futebol amador, sem complicação.</p>
+      <nav class="flex gap-5 font-medium">
+        <a href="{% url 'api:raiz' %}" class="transition hover:text-slate-900">API</a>
+        <a href="{% url 'admin:index' %}" class="transition hover:text-slate-900">Área do gestor</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

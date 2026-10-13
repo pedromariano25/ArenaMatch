@@ -1,0 +1,132 @@
+{% extends "arena/base.html" %}
+{% load arena_extras %}
+
+{% block title %}Partidas abertas{% endblock %}
+
+{% block content %}
+<section class="relative isolate overflow-hidden bg-emerald-950 text-white">
+  <div class="absolute inset-0 -z-10 bg-linear-to-br from-emerald-900 via-emerald-950 to-slate-950"></div>
+  <div class="absolute -right-32 -top-32 -z-10 size-[28rem] rounded-full bg-emerald-500/20 blur-3xl"></div>
+  <div class="absolute -bottom-40 -left-24 -z-10 size-[22rem] rounded-full bg-lime-400/10 blur-3xl"></div>
+  {% include "arena/_linhas_campo.html" %}
+
+  <div class="mx-auto max-w-6xl px-4 pb-24 pt-14 sm:px-6 sm:pt-20">
+    <p class="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-emerald-100 backdrop-blur">
+      <span class="relative flex size-2">
+        <span class="absolute inline-flex size-full animate-ping rounded-full bg-lime-400 opacity-75"></span>
+        <span class="relative inline-flex size-2 rounded-full bg-lime-400"></span>
+      </span>
+      {{ total_partidas }} partida{{ total_partidas|pluralize }} com vaga agora
+    </p>
+    <h1 class="mt-6 max-w-2xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
+      Faltou um?
+      <span class="bg-linear-to-r from-lime-300 to-emerald-300 bg-clip-text text-transparent">Entra no jogo.</span>
+    </h1>
+    <p class="mt-5 max-w-xl text-base text-emerald-100/80 sm:text-lg">
+      Partidas abertas nas melhores arenas da cidade. Escolha o horário e o nível, e garanta
+      sua vaga em segundos, sem precisar ter time fechado.
+    </p>
+    <div class="mt-8 flex flex-wrap items-center gap-3">
+      <a href="#partidas" class="inline-flex items-center gap-2 rounded-xl bg-lime-400 px-5 py-3 text-sm font-bold text-emerald-950 shadow-lg shadow-lime-400/20 transition hover:bg-lime-300">
+        Ver partidas {% icone "seta" "size-4" %}
+      </a>
+      {% if not user.is_authenticated %}
+        <a href="{% url 'arena:cadastro' %}" class="inline-flex items-center gap-2 rounded-xl border border-white/20 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/10">Criar conta grátis</a>
+      {% endif %}
+    </div>
+    <dl class="mt-12 grid max-w-xl grid-cols-3 gap-3 sm:gap-4">
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+        <dt class="text-xs font-medium text-emerald-200/80">Partidas abertas</dt>
+        <dd class="mt-1 text-2xl font-extrabold sm:text-3xl">{{ total_partidas }}</dd>
+      </div>
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+        <dt class="text-xs font-medium text-emerald-200/80">Vagas disponíveis</dt>
+        <dd class="mt-1 text-2xl font-extrabold sm:text-3xl">{{ total_vagas }}</dd>
+      </div>
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+        <dt class="text-xs font-medium text-emerald-200/80">Arenas parceiras</dt>
+        <dd class="mt-1 text-2xl font-extrabold sm:text-3xl">{{ total_arenas }}</dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<section id="partidas" class="mx-auto -mt-12 max-w-6xl scroll-mt-24 px-4 sm:px-6">
+  <form method="get" class="relative rounded-2xl border border-slate-200 bg-white p-4 shadow-xl shadow-slate-900/5 sm:p-5">
+    <p class="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">{% icone "filtro" "size-5 text-emerald-600" %} Encontre sua partida</p>
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {% for campo in filtro %}
+        <label class="block"><span class="sr-only">{{ campo.label }}</span>{{ campo|estilizar }}</label>
+      {% endfor %}
+      <div class="col-span-2 flex gap-2 lg:col-span-1">
+        <button type="submit" class="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700">Filtrar</button>
+        {% if filtro.ativo %}
+          <a href="{% url 'arena:vitrine' %}#partidas" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Limpar</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  {% regroup partidas by time_slot.data as dias %}
+  {% for dia in dias %}
+    <div class="mt-12">
+      <div class="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-extrabold tracking-tight text-slate-900">{{ dia.grouper|rotulo_dia }}</h2>
+          <p class="text-sm text-slate-500">{{ dia.grouper|date:"d \d\e F"|lower }}</p>
+        </div>
+        <span class="rounded-full bg-slate-200/70 px-3 py-1 text-xs font-bold text-slate-600">{{ dia.list|length }} partida{{ dia.list|length|pluralize }}</span>
+      </div>
+      <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {% for partida in dia.list %}
+          {% include "arena/_card_partida.html" %}
+        {% endfor %}
+      </div>
+    </div>
+  {% empty %}
+    <div class="mt-12 rounded-3xl border-2 border-dashed border-slate-200 bg-white px-6 py-16 text-center">
+      <span class="mx-auto grid size-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">{% icone "bola" "size-7" %}</span>
+      <h2 class="mt-4 text-lg font-bold text-slate-900">Nenhuma partida encontrada</h2>
+      <p class="mx-auto mt-1 max-w-sm text-sm text-slate-500">Tente outro dia, nível ou arena. As arenas abrem novas partidas o tempo todo.</p>
+      {% if filtro.ativo %}
+        <a href="{% url 'arena:vitrine' %}#partidas" class="mt-6 inline-flex rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700">Limpar filtros</a>
+      {% endif %}
+    </div>
+  {% endfor %}
+</section>
+
+<section class="mx-auto mt-20 max-w-6xl px-4 sm:px-6">
+  <h2 class="text-2xl font-extrabold tracking-tight text-slate-900">Como funciona</h2>
+  <div class="mt-6 grid gap-5 md:grid-cols-3">
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <span class="grid size-11 place-items-center rounded-xl bg-emerald-50 text-emerald-600">{% icone "filtro" "size-6" %}</span>
+      <h3 class="mt-4 font-bold text-slate-900">1. Escolha a partida</h3>
+      <p class="mt-1 text-sm text-slate-500">Filtre por dia, nível, tipo de piso e arena para achar o jogo certo para você.</p>
+    </div>
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <span class="grid size-11 place-items-center rounded-xl bg-emerald-50 text-emerald-600">{% icone "ticket" "size-6" %}</span>
+      <h3 class="mt-4 font-bold text-slate-900">2. Reserve sua vaga</h3>
+      <p class="mt-1 text-sm text-slate-500">A vaga é sua na hora. Cancele sem custo enquanto o pagamento estiver pendente.</p>
+    </div>
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <span class="grid size-11 place-items-center rounded-xl bg-emerald-50 text-emerald-600">{% icone "bola" "size-6" %}</span>
+      <h3 class="mt-4 font-bold text-slate-900">3. Chegue e jogue</h3>
+      <p class="mt-1 text-sm text-slate-500">Pague direto na arena e entre em campo. Simples assim.</p>
+    </div>
+  </div>
+
+  <div class="relative isolate mt-10 overflow-hidden rounded-3xl bg-slate-900 px-6 py-10 text-white sm:px-10">
+    <div class="absolute -right-16 -top-16 -z-10 size-64 rounded-full bg-emerald-500/30 blur-3xl"></div>
+    <div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+      <div class="max-w-xl">
+        <p class="text-sm font-bold uppercase tracking-wider text-lime-300">Para donos de arena</p>
+        <h2 class="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">Transforme horários ociosos em receita.</h2>
+        <p class="mt-2 text-slate-300">Gerencie agenda, mensalistas e pagamentos, e abra partidas para a comunidade com um clique.</p>
+      </div>
+      <a href="{% url 'admin:index' %}" class="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-900 transition hover:bg-lime-300 md:self-auto">
+        Acessar painel do gestor {% icone "seta" "size-4" %}
+      </a>
+    </div>
+  </div>
+</section>
+{% endblock %}
