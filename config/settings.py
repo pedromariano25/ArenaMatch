@@ -104,6 +104,11 @@ DATABASES = {
 }
 
 
+# Usuário customizado (UUID, papéis gestor/jogador, CPF e telefone).
+# Precisa estar definido antes da primeira migração do projeto.
+AUTH_USER_MODEL = 'arena.CustomUser'
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
