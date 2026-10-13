@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework.authtoken',
     'arena',
 ]
 
@@ -107,6 +109,24 @@ DATABASES = {
 # Usuário customizado (UUID, papéis gestor/jogador, CPF e telefone).
 # Precisa estar definido antes da primeira migração do projeto.
 AUTH_USER_MODEL = 'arena.CustomUser'
+
+# Autenticação da vitrine web (B2C).
+LOGIN_URL = 'arena:entrar'
+LOGIN_REDIRECT_URL = 'arena:vitrine'
+LOGOUT_REDIRECT_URL = 'arena:vitrine'
+
+# APIs B2C (Django REST Framework). Token para o app mobile; sessão para a vitrine web.
+# O token vem primeiro para que anônimos recebam 401 (com WWW-Authenticate), não 403.
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticatedOrReadOnly'],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    'EXCEPTION_HANDLER': 'arena.api.exceptions.tratar_excecoes',
+}
 
 
 # Password validation
