@@ -2,6 +2,10 @@
 
 **Data:** 13/10/2026 · **Modo:** operação autônoma (Night Shift)
 
+> **Atualização posterior:** a interface B2B passou a ser o **Portal do Gestor
+> (ArenaManager)**, em `/manager/`, e a vitrine ganhou a identidade "Clean SaaS".
+> O Django Admin virou back-office interno. Os acessos e endereços atuais estão no README.
+
 ## Resumo
 
 O MVP está pronto e com dados:

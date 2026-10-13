@@ -12,16 +12,17 @@ encontram partidas abertas para completar.
 
 | Frente | Público | O que entrega |
 | --- | --- | --- |
-| **B2B** | Gestores de complexos esportivos | Painel de gestão com agenda de quadras, reservas avulsas, mensalistas e bloqueios. Com um clique, transforma **horários ociosos** em **partidas abertas** para a comunidade. |
+| **B2B** | Gestores de complexos esportivos | **ArenaManager**, o portal do gestor: dashboard financeiro, agenda semanal das quadras (mensalistas, avulsos e bloqueios), financeiro e configurações. Com um clique, transforma **horários vagos** em **partidas abertas** para a comunidade. |
 | **B2C** | Jogadores avulsos | Vitrine (web e app mobile) para encontrar partidas abertas por dia, nível, piso e arena, e reservar vagas individuais. |
 
 As duas frentes compartilham o mesmo banco de dados. A receita da arena cresce
 porque horários que ficariam vazios são vendidos vaga a vaga.
 
-No MVP, o painel B2B é o **Django Admin customizado**. A frente B2C tem uma
-**vitrine web** e **APIs REST** para o app mobile. O pagamento é registrado
-manualmente (status de pagamento), e a integração com um gateway fica para uma
-etapa futura.
+A frente B2B é o **Portal do Gestor (ArenaManager)**, em `/manager/`. A frente
+B2C tem uma **vitrine web** e **APIs REST** para o app mobile. O **Django Admin**
+fica como back-office interno da equipe da plataforma. O pagamento é registrado
+manualmente (o gestor confirma no Financeiro), e a integração com um gateway fica
+para uma etapa futura.
 
 ## Stack
 
@@ -66,8 +67,9 @@ python manage.py runserver
 | Endereço | O que é |
 | --- | --- |
 | <http://127.0.0.1:8000/> | Vitrine para os jogadores (B2C) |
-| <http://127.0.0.1:8000/admin/> | Painel do gestor (B2B) |
+| <http://127.0.0.1:8000/manager/> | Portal do Gestor, o ArenaManager (B2B) |
 | <http://127.0.0.1:8000/api/> | API REST navegável |
+| <http://127.0.0.1:8000/admin/> | Back-office da plataforma (Django Admin) |
 
 > **Windows:** se o PowerShell bloquear o `Activate.ps1`, libere scripts locais
 > para o seu usuário com `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
@@ -77,14 +79,14 @@ python manage.py runserver
 Criados pelo `populate_db`, que só roda com `DEBUG=True`. As senhas são
 fracas de propósito: **não use esses acessos fora do ambiente local**.
 
-| Perfil | Login | Senha |
-| --- | --- | --- |
-| Superusuário (também é jogador) | `admin` | `admin123` |
-| Gestor da Arena Gol de Placa | `carlos.andrade` | `gestor123` |
-| Gestora do Complexo Esportivo Tabelinha | `fernanda.lima` | `gestor123` |
-| Gestor da Arena Pé na Areia | `rafael.souza` | `gestor123` |
-| Jogador de demonstração | `jogador` | `jogador123` |
-| Demais jogadores (ex.: `lucas.oliveira`) | — | `jogador123` |
+| Perfil | Onde entrar | Login | Senha |
+| --- | --- | --- | --- |
+| Gestor da Arena Gol de Placa | `/manager/` | `carlos.andrade` | `gestor123` |
+| Gestora do Complexo Esportivo Tabelinha | `/manager/` | `fernanda.lima` | `gestor123` |
+| Gestor da Arena Pé na Areia | `/manager/` | `rafael.souza` | `gestor123` |
+| Jogador de demonstração | `/` | `jogador` | `jogador123` |
+| Demais jogadores (ex.: `lucas.oliveira`) | `/` | — | `jogador123` |
+| Superusuário (portal com todas as arenas, back-office e vitrine) | qualquer um | `admin` | `admin123` |
 
 Sem os dados de demonstração, crie um administrador com `python manage.py createsuperuser`.
 
@@ -130,13 +132,15 @@ python manage.py test arena
 │   ├── api/                # Serializers, views, permissões e rotas da API REST
 │   ├── management/         # Comando populate_db (dados de demonstração)
 │   ├── migrations/
-│   ├── templates/          # Vitrine (arena/) e customizações do admin (admin/)
-│   ├── templatetags/       # Filtros de apresentação e indicadores do painel
-│   ├── tests/              # Testes de modelos, admin, API, vitrine e populate_db
-│   ├── admin.py            # Painel do gestor (B2B)
+│   ├── templates/          # Vitrine e portal (arena/) e customizações do back-office (admin/)
+│   ├── templatetags/       # Filtros de apresentação, ícones e indicadores
+│   ├── tests/              # Testes de modelos, portal, admin, API, vitrine e populate_db
+│   ├── admin.py            # Back-office da plataforma (Django Admin)
+│   ├── gestao.py           # Cálculos do portal: KPIs, grade da agenda, financeiro
 │   ├── models.py           # Entidades e regras de negócio
+│   ├── urls_gestor.py      # Rotas do Portal do Gestor (/manager/)
 │   ├── validators.py       # CPF, CNPJ (inclusive alfanumérico) e telefone
-│   └── views.py            # Vitrine web (B2C)
+│   └── views.py            # Vitrine (B2C) e Portal do Gestor (B2B)
 ├── config/                 # settings, urls, wsgi/asgi
 ├── .env.example            # Modelo de variáveis de ambiente (o .env real não é versionado)
 ├── manage.py
@@ -157,5 +161,7 @@ O MVP (modelagem, painel B2B, APIs e vitrine) está implementado. Próximos pass
 - Commits seguem o padrão [Conventional Commits](https://www.conventionalcommits.org/pt-br/)
   (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`).
 - Código em conformidade com a PEP 8, com type hints e docstrings.
+- Interface "Clean SaaS" com Tailwind: fundo `slate-50`, cartões brancos com borda
+  sutil e `shadow-sm`, destaque `emerald-600` e texto `slate-800`/`slate-900`, sem gradientes.
 - Regras de negócio ficam nos modelos (`clean()`), e `save()` sempre valida.
 - Segredos (`.env`) e o banco local (`db.sqlite3`) **nunca** são versionados.
