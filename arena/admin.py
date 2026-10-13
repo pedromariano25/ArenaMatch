@@ -1,8 +1,9 @@
-"""Painel de gestão B2B: Django Admin customizado para os gestores de arenas.
+"""Back-office da plataforma (Django Admin customizado).
 
-Gestores (``is_manager`` sem superusuário) enxergam e editam apenas os dados das
-próprias arenas; superusuários enxergam tudo. Alterações de status passam sempre
-por ``save()``, para que as regras de negócio e o recálculo de vagas sejam aplicados.
+O dia a dia dos gestores acontece no Portal do Gestor (``/manager/``); o admin é a
+ferramenta interna da equipe do ArenaMatch. Mesmo assim, gestores com acesso ao
+admin enxergam apenas os dados das próprias arenas. Alterações de status passam
+sempre por ``save()``, para que as regras de negócio e o recálculo de vagas valham.
 """
 
 from datetime import timedelta
@@ -38,9 +39,9 @@ from .models import (
     TimeSlot,
 )
 
-admin.site.site_header = "ArenaMatch · Painel do Gestor"
-admin.site.site_title = "ArenaMatch"
-admin.site.index_title = "Gestão de arenas, agenda e partidas"
+admin.site.site_header = "ArenaMatch · Back-office"
+admin.site.site_title = "ArenaMatch Back-office"
+admin.site.index_title = "Administração da plataforma"
 # Página inicial com indicadores (partidas, ocupação, receita e horários ociosos).
 admin.site.index_template = "admin/arena_index.html"
 

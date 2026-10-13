@@ -1,0 +1,32 @@
+{% load arena_extras %}
+{% if celula.tipo == "vago" %}
+  <div class="flex h-full min-h-20 flex-col justify-between gap-1.5 rounded-lg border border-dashed border-slate-200 bg-white p-2 transition hover:border-emerald-400 hover:bg-emerald-50/40">
+    <span class="inline-flex w-fit items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium {{ celula.tipo|classes_selo }}">Vago</span>
+    <button type="button"
+            data-abrir-partida
+            data-dia="{{ celula.dia|date:'Y-m-d' }}"
+            data-inicio="{{ celula.inicio|time:'H:i' }}"
+            data-fim="{{ celula.fim|time:'H:i' }}"
+            data-rotulo="{{ celula.dia|date:'l, d/m'|capfirst }} · {{ celula.intervalo }}"
+            class="flex items-start gap-1 rounded-md px-1 py-0.5 text-left text-[11px] font-medium leading-tight text-emerald-700 transition hover:bg-emerald-100/60 hover:text-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-emerald-600">
+      {% icone "mais" "mt-px size-3 shrink-0" %}<span>Transformar em Partida Aberta</span>
+    </button>
+  </div>
+{% elif celula.tipo == "encerrado" %}
+  <div class="grid h-full min-h-20 place-items-center rounded-lg bg-slate-50 text-xs text-slate-300">
+    <span aria-hidden="true">—</span><span class="sr-only">Horário encerrado</span>
+  </div>
+{% else %}
+  <div class="h-full min-h-20 rounded-lg border-l-[3px] p-2 {{ celula.tipo|classes_bloco }}">
+    <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium {{ celula.tipo|classes_selo }}">{{ celula.rotulo }}</span>
+    {% if celula.partida %}
+      <p class="mt-1.5 text-xs font-medium text-slate-800 tabular-nums">{{ celula.partida.vagas_ocupadas }}/{{ celula.partida.vagas_totais }} vagas</p>
+      <div class="mt-1 h-1 rounded-full bg-emerald-100" role="img" aria-label="{{ celula.partida.percentual_ocupado }}% das vagas vendidas">
+        <div class="h-1 rounded-full bg-emerald-600" style="width: {{ celula.partida.percentual_ocupado }}%"></div>
+      </div>
+      <p class="mt-1 text-[11px] text-slate-600 tabular-nums">{{ celula.arrecadado|brl }} recebidos</p>
+    {% else %}
+      <p class="mt-1.5 text-[11px] text-slate-500 tabular-nums">{{ celula.intervalo }}</p>
+    {% endif %}
+  </div>
+{% endif %}

@@ -1,0 +1,162 @@
+{% extends "arena/manager_base.html" %}
+{% load arena_extras %}
+
+{% block title %}Agenda{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <div>
+    <p class="text-sm text-slate-500">{{ arena.nome }}</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Agenda</h1>
+    <p class="mt-1 text-sm text-slate-500">Semana de {{ dias.0|date:"d \d\e F"|lower }} a {{ dias.6|date:"d \d\e F \d\e Y"|lower }}</p>
+  </div>
+  {% if quadra %}
+    <div class="inline-flex self-start rounded-lg border border-slate-300 bg-white shadow-sm lg:self-auto">
+      <a href="?semana={{ semana_anterior|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="grid place-items-center rounded-l-lg border-r border-slate-300 px-2.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900">
+        {% icone "anterior" "size-4" %}<span class="sr-only">Semana anterior</span>
+      </a>
+      <a href="?semana={{ semana_atual|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Esta semana</a>
+      <a href="?semana={{ proxima_semana|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="grid place-items-center rounded-r-lg border-l border-slate-300 px-2.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900">
+        {% icone "proximo" "size-4" %}<span class="sr-only">Próxima semana</span>
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{% if quadra %}
+  <div class="mt-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <nav class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1" aria-label="Quadras">
+      {% for opcao in quadras %}
+        <a href="?semana={{ dias.0|date:'Y-m-d' }}&amp;quadra={{ opcao.pk }}"{% if opcao == quadra %} aria-current="page"{% endif %} class="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition {% if opcao == quadra %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600 hover:text-slate-900{% endif %}">
+          {{ opcao.nome_ou_numero }} <span class="font-normal text-slate-400">· {{ opcao.get_tipo_piso_display }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+    <ul class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600" aria-label="Legenda da agenda">
+      {% for tipo, rotulo, quantidade in legenda %}
+        <li class="flex items-center gap-1.5">
+          <span class="size-2.5 rounded-sm {{ tipo|cor_marca }}" aria-hidden="true"></span>
+          {{ rotulo }} <span class="text-slate-400 tabular-nums">{{ quantidade }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[980px] table-fixed border-collapse">
+        <caption class="sr-only">Agenda semanal de {{ quadra.nome_ou_numero }}</caption>
+        <colgroup>
+          <col class="w-20">
+          {% for dia in dias %}<col>{% endfor %}
+        </colgroup>
+        <thead>
+          <tr class="border-b border-slate-200 bg-slate-50">
+            <th scope="col" class="sticky left-0 z-10 bg-slate-50 px-3 py-3 text-left text-xs font-medium text-slate-500">Horário</th>
+            {% for dia in dias %}
+              <th scope="col" class="px-2 py-3 text-center{% if dia == hoje %} bg-emerald-50/60{% endif %}">
+                <span class="block text-xs font-medium uppercase tracking-wide {% if dia == hoje %}text-emerald-700{% else %}text-slate-500{% endif %}">{{ dia|date:"D" }}</span>
+                <span class="mt-1 inline-grid size-8 place-items-center rounded-full text-sm font-semibold {% if dia == hoje %}bg-emerald-600 text-white{% else %}text-slate-900{% endif %}">{{ dia|date:"d" }}</span>
+              </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for linha in linhas %}
+            <tr>
+              <th scope="row" class="sticky left-0 z-10 bg-white px-3 py-2 text-left align-top text-xs font-medium text-slate-500 tabular-nums">{{ linha.inicio|time:"H:i" }}</th>
+              {% for celula in linha.celulas %}
+                <td class="p-1.5 align-top{% if celula.dia == hoje %} bg-emerald-50/40{% endif %}">
+                  {% include "arena/_manager_celula.html" %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <dialog id="dialogo-partida" class="m-auto w-full max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-xl backdrop:bg-slate-900/40">
+    <form method="post" action="{% url 'gestor:abrir_partida' %}" class="p-6">
+      {% csrf_token %}
+      <input type="hidden" name="quadra" value="{{ quadra.pk }}">
+      <input type="hidden" name="dia">
+      <input type="hidden" name="hora_inicio">
+      <input type="hidden" name="hora_fim">
+      <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
+
+      <h2 class="text-lg font-semibold text-slate-900">Transformar em partida aberta</h2>
+      <p class="mt-1 text-sm text-slate-500"><span data-rotulo></span> · {{ quadra.nome_ou_numero }}</p>
+
+      <div class="mt-5 grid grid-cols-2 gap-4">
+        <div>
+          <label for="campo-preco" class="block text-sm font-medium text-slate-700">Preço por vaga (R$)</label>
+          <input id="campo-preco" name="preco_por_vaga" inputmode="decimal" required value="{{ preco_sugerido|floatformat:2 }}" class="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20">
+        </div>
+        <div>
+          <label for="campo-vagas" class="block text-sm font-medium text-slate-700">Vagas</label>
+          <input id="campo-vagas" name="vagas_totais" type="number" min="1" placeholder="{{ quadra.capacidade_padrao }}" class="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20">
+        </div>
+        <div class="col-span-2">
+          <label for="campo-nivel" class="block text-sm font-medium text-slate-700">Nível</label>
+          <select id="campo-nivel" name="nivel_competitividade" class="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20">
+            {% for valor, rotulo in niveis %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-5 flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3 text-sm">
+        <span class="text-slate-600">Receita com todas as vagas vendidas</span>
+        <strong class="font-semibold text-slate-900" data-potencial></strong>
+      </div>
+      <p class="mt-3 text-xs text-slate-500">A partida aparece na hora para os jogadores no app. As vagas ficam com pagamento pendente até você confirmar no Financeiro.</p>
+
+      <div class="mt-6 flex justify-end gap-3">
+        <button type="button" data-fechar class="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">Cancelar</button>
+        <button type="submit" class="rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">Publicar no app</button>
+      </div>
+    </form>
+  </dialog>
+{% else %}
+  <div class="mt-8 rounded-xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+    <p class="text-sm font-medium text-slate-900">Nenhuma quadra cadastrada</p>
+    <p class="mt-1 text-sm text-slate-500">Cadastre as quadras da arena para montar a agenda.</p>
+    <a href="{% url 'gestor:configuracoes' %}" class="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700">Ir para Configurações</a>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const dialogo = document.getElementById("dialogo-partida");
+    if (!dialogo) return;
+    const form = dialogo.querySelector("form");
+    const potencial = dialogo.querySelector("[data-potencial]");
+    const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+    const lerPreco = (texto) => {
+      const limpo = texto.includes(",") ? texto.replace(/\./g, "").replace(",", ".") : texto;
+      return parseFloat(limpo) || 0;
+    };
+    const atualizarPotencial = () => {
+      const vagas = parseInt(form.vagas_totais.value || form.vagas_totais.placeholder, 10) || 0;
+      potencial.textContent = moeda.format(lerPreco(form.preco_por_vaga.value) * vagas);
+    };
+
+    document.querySelectorAll("[data-abrir-partida]").forEach((botao) => {
+      botao.addEventListener("click", () => {
+        form.dia.value = botao.dataset.dia;
+        form.hora_inicio.value = botao.dataset.inicio;
+        form.hora_fim.value = botao.dataset.fim;
+        dialogo.querySelector("[data-rotulo]").textContent = botao.dataset.rotulo;
+        atualizarPotencial();
+        dialogo.showModal();
+      });
+    });
+    form.addEventListener("input", atualizarPotencial);
+    dialogo.querySelector("[data-fechar]").addEventListener("click", () => dialogo.close());
+  })();
+</script>
+{% endblock %}

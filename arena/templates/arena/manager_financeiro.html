@@ -1,0 +1,124 @@
+{% extends "arena/manager_base.html" %}
+{% load arena_extras %}
+
+{% block title %}Financeiro{% endblock %}
+
+{% block content %}
+<div>
+  <p class="text-sm text-slate-500">{{ arena.nome }}</p>
+  <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Financeiro</h1>
+  <p class="mt-1 text-sm text-slate-500">Confirme os pagamentos recebidos na arena e registre os reembolsos.</p>
+</div>
+
+<dl class="mt-8 grid gap-4 sm:grid-cols-3">
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <dt class="text-sm font-medium text-slate-500">Recebido no mês</dt>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.recebido_mes|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">{{ resumo.pagamentos_mes }} vaga{{ resumo.pagamentos_mes|pluralize }} paga{{ resumo.pagamentos_mes|pluralize }}</dd>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <dt class="text-sm font-medium text-slate-500">A receber</dt>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.a_receber|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Pagamentos pendentes em partidas ativas</dd>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <dt class="text-sm font-medium text-slate-500">Reembolsado no mês</dt>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.reembolsado_mes|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Vagas devolvidas aos jogadores</dd>
+  </div>
+</dl>
+
+<section class="mt-8 rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="titulo-inscricoes">
+  <div class="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+    <h2 id="titulo-inscricoes" class="text-base font-semibold text-slate-900">Inscrições</h2>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <nav class="flex w-fit gap-1 rounded-lg bg-slate-100 p-1" aria-label="Status do pagamento">
+        {% for valor, rotulo in filtros_status %}
+          <a href="?status={{ valor }}&amp;periodo={{ periodo }}"{% if valor == status %} aria-current="page"{% endif %} class="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition {% if valor == status %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600 hover:text-slate-900{% endif %}">{{ rotulo }}</a>
+        {% endfor %}
+      </nav>
+      <form method="get">
+        <input type="hidden" name="status" value="{{ status }}">
+        <label for="filtro-periodo" class="sr-only">Período</label>
+        <select id="filtro-periodo" name="periodo" onchange="this.form.submit()" class="block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20">
+          {% for valor, rotulo in periodos %}<option value="{{ valor }}"{% if valor == periodo %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+        </select>
+      </form>
+    </div>
+  </div>
+
+  {% if pagina.object_list %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-50 text-left text-xs font-medium text-slate-500">
+          <tr>
+            <th scope="col" class="px-5 py-3">Jogador</th>
+            <th scope="col" class="px-3 py-3">Partida</th>
+            <th scope="col" class="px-3 py-3 text-right">Valor</th>
+            <th scope="col" class="px-3 py-3">Pagamento</th>
+            <th scope="col" class="px-3 py-3">Inscrição</th>
+            <th scope="col" class="px-5 py-3 text-right"><span class="sr-only">Ações</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for inscricao in pagina.object_list %}
+            {% with horario=inscricao.open_match.time_slot %}
+            <tr class="transition hover:bg-slate-50">
+              <td class="whitespace-nowrap px-5 py-3">
+                <div class="flex items-center gap-3">
+                  <span class="grid size-8 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">{{ inscricao.player.iniciais }}</span>
+                  <div>
+                    <p class="font-medium text-slate-900">{{ inscricao.player.get_full_name|default:inscricao.player.username }}</p>
+                    <p class="text-slate-500">{{ inscricao.player.telefone|default:inscricao.player.email }}</p>
+                  </div>
+                </div>
+              </td>
+              <td class="whitespace-nowrap px-3 py-3">
+                <p class="text-slate-900">{{ horario.data|date:"D, d/m" }} · <span class="tabular-nums">{{ horario.intervalo }}</span></p>
+                <p class="text-slate-500">{{ horario.court.nome_ou_numero }}</p>
+              </td>
+              <td class="whitespace-nowrap px-3 py-3 text-right font-medium text-slate-900 tabular-nums">{{ inscricao.open_match.preco_por_vaga|brl }}</td>
+              <td class="px-3 py-3">
+                <span class="inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status_pagamento|classes_pagamento }}">{{ inscricao.get_status_pagamento_display }}</span>
+              </td>
+              <td class="whitespace-nowrap px-3 py-3 text-slate-500 tabular-nums">{{ inscricao.data_inscricao|date:"d/m H:i" }}</td>
+              <td class="whitespace-nowrap px-5 py-3 text-right">
+                {% if inscricao.status_pagamento == "pendente" %}
+                  <form method="post" action="{% url 'gestor:pagamento' inscricao.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="pago">
+                    <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
+                    <button type="submit" class="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700">Marcar como pago</button>
+                  </form>
+                {% elif inscricao.status_pagamento == "pago" %}
+                  <form method="post" action="{% url 'gestor:pagamento' inscricao.pk %}" onsubmit="return confirm('Registrar o reembolso? A vaga volta a ficar disponível na partida.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="reembolsado">
+                    <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
+                    <button type="submit" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">Reembolsar</button>
+                  </form>
+                {% else %}
+                  <span class="text-xs text-slate-400">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pagina.has_other_pages %}
+      <div class="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-500">
+        <p>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }} · {{ pagina.paginator.count }} inscrições</p>
+        <div class="flex gap-2">
+          {% if pagina.has_previous %}<a href="?status={{ status }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.previous_page_number }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50">Anterior</a>{% endif %}
+          {% if pagina.has_next %}<a href="?status={{ status }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.next_page_number }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50">Próxima</a>{% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="px-5 py-12 text-center text-sm text-slate-500">Nenhuma inscrição encontrada com estes filtros.</p>
+  {% endif %}
+</section>
+{% endblock %}

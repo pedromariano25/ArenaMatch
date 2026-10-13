@@ -1,0 +1,25 @@
+"""Rotas do Portal do Gestor (ArenaManager), montadas em ``/manager/``."""
+
+from django.contrib.auth.views import LogoutView
+from django.urls import path
+from django.views.generic import RedirectView
+
+from . import views
+
+app_name = "gestor"
+
+urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="gestor:dashboard"), name="inicio"),
+    path("login/", views.GestorLoginView.as_view(), name="login"),
+    path("sair/", LogoutView.as_view(next_page="gestor:login"), name="sair"),
+    path("dashboard/", views.GestorDashboardView.as_view(), name="dashboard"),
+    path("agenda/", views.GestorAgendaView.as_view(), name="agenda"),
+    path("agenda/abrir-partida/", views.GestorAbrirPartidaView.as_view(), name="abrir_partida"),
+    path("financeiro/", views.GestorFinanceiroView.as_view(), name="financeiro"),
+    path(
+        "financeiro/inscricoes/<uuid:pk>/pagamento/",
+        views.GestorPagamentoView.as_view(),
+        name="pagamento",
+    ),
+    path("configuracoes/", views.GestorConfiguracoesView.as_view(), name="configuracoes"),
+]

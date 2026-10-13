@@ -1,0 +1,140 @@
+{% extends "arena/manager_base.html" %}
+{% load arena_extras %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <p class="text-sm text-slate-500">{{ hoje|date:"l, d \d\e F"|lower|capfirst }}</p>
+    <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{{ arena.nome }}</h1>
+  </div>
+  <div class="flex gap-2">
+    <a href="{% url 'gestor:financeiro' %}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+      {% icone "dinheiro" "size-4 text-slate-500" %} Financeiro
+    </a>
+    <a href="{% url 'gestor:agenda' %}" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">
+      {% icone "calendario" "size-4" %} Abrir agenda
+    </a>
+  </div>
+</div>
+
+<dl class="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-3">
+      <dt class="text-sm font-medium text-slate-500">Total recebido no mês</dt>
+      <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "dinheiro" "size-5" %}</span>
+    </div>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.recebido_mes|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">{{ indicadores.pagamentos_mes }} vaga{{ indicadores.pagamentos_mes|pluralize }} paga{{ indicadores.pagamentos_mes|pluralize }} em {{ hoje|date:"F"|lower }}</dd>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-3">
+      <dt class="text-sm font-medium text-slate-500">A receber</dt>
+      <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "relogio" "size-5" %}</span>
+    </div>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.a_receber|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Inscrições com pagamento pendente</dd>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-3">
+      <dt class="text-sm font-medium text-slate-500">Horários vagos na semana</dt>
+      <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "tendencia" "size-5" %}</span>
+    </div>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.horarios_vagos }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">
+      Cada um rende até <span class="font-medium text-slate-700">{{ indicadores.potencial_por_horario|brl }}</span> como partida aberta.
+      <a href="{% url 'gestor:agenda' %}" class="font-medium text-emerald-700 hover:text-emerald-800">Ver na agenda</a>
+    </dd>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="flex items-start justify-between gap-3">
+      <dt class="text-sm font-medium text-slate-500">Horários de mensalistas</dt>
+      <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "jogadores" "size-5" %}</span>
+    </div>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.horarios_mensalistas }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Reservas fixas em {{ indicadores.quadras_com_mensalistas }} quadra{{ indicadores.quadras_com_mensalistas|pluralize }} nos próximos 7 dias</dd>
+  </div>
+</dl>
+
+<div class="mt-8 grid gap-6 xl:grid-cols-3">
+  <section class="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-2" aria-labelledby="titulo-partidas">
+    <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
+      <div>
+        <h2 id="titulo-partidas" class="text-base font-semibold text-slate-900">Próximas partidas abertas</h2>
+        <p class="mt-0.5 text-sm text-slate-500">Vagas vendidas e valores de cada partida publicada no app</p>
+      </div>
+      <a href="{% url 'gestor:agenda' %}" class="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-800">Ver agenda</a>
+    </div>
+
+    {% if proximas %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-50 text-left text-xs font-medium text-slate-500">
+            <tr>
+              <th scope="col" class="px-5 py-3">Partida</th>
+              <th scope="col" class="px-3 py-3">Quadra</th>
+              <th scope="col" class="px-3 py-3">Vagas vendidas</th>
+              <th scope="col" class="px-3 py-3 text-right">Arrecadado</th>
+              <th scope="col" class="px-5 py-3 text-right">A receber</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for item in proximas %}
+              {% with partida=item.partida horario=item.partida.time_slot %}
+              <tr class="transition hover:bg-slate-50">
+                <td class="whitespace-nowrap px-5 py-3">
+                  <p class="font-medium text-slate-900">{{ horario.data|rotulo_dia }}, {{ horario.data|date:"d/m" }}</p>
+                  <p class="text-slate-500 tabular-nums">{{ horario.intervalo }} · {{ partida.get_nivel_competitividade_display }}</p>
+                </td>
+                <td class="whitespace-nowrap px-3 py-3">
+                  <p class="text-slate-900">{{ horario.court.nome_ou_numero }}</p>
+                  <p class="text-slate-500">{{ horario.court.get_tipo_piso_display }}</p>
+                </td>
+                <td class="px-3 py-3">
+                  <p class="whitespace-nowrap text-slate-900 tabular-nums">{{ partida.vagas_ocupadas }} de {{ partida.vagas_totais }}{% if partida.status == "lotada" %} <span class="ml-1 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-800">Lotada</span>{% endif %}</p>
+                  <div class="mt-1.5 h-1.5 w-28 rounded-full bg-emerald-100" role="img" aria-label="{{ partida.percentual_ocupado }}% das vagas vendidas">
+                    <div class="h-1.5 rounded-full bg-emerald-600" style="width: {{ partida.percentual_ocupado }}%"></div>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-3 py-3 text-right font-medium text-slate-900 tabular-nums">{{ item.arrecadado|brl }}</td>
+                <td class="whitespace-nowrap px-5 py-3 text-right text-slate-500 tabular-nums">{{ item.a_receber|brl }}</td>
+              </tr>
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="px-5 py-12 text-center">
+        <p class="text-sm font-medium text-slate-900">Nenhuma partida aberta nos próximos dias</p>
+        <p class="mt-1 text-sm text-slate-500">Transforme horários vagos em partidas e venda vagas avulsas pelo app.</p>
+        <a href="{% url 'gestor:agenda' %}" class="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700">Abrir agenda</a>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="titulo-hoje">
+    <div class="border-b border-slate-200 px-5 py-4">
+      <h2 id="titulo-hoje" class="text-base font-semibold text-slate-900">Hoje na arena</h2>
+      <p class="mt-0.5 text-sm text-slate-500">Reservas e partidas de {{ hoje|date:"d/m" }}</p>
+    </div>
+    <ul class="divide-y divide-slate-100">
+      {% for celula in agenda_hoje %}
+        <li class="flex items-start justify-between gap-3 px-5 py-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-slate-900 tabular-nums">{{ celula.intervalo }}</p>
+            <p class="text-sm text-slate-500">{{ celula.quadra.nome_ou_numero }}{% if celula.partida %} · {{ celula.partida.vagas_ocupadas }}/{{ celula.partida.vagas_totais }} vagas{% endif %}</p>
+          </div>
+          <span class="mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-xs font-medium {{ celula.tipo|classes_selo }}">{{ celula.rotulo }}</span>
+        </li>
+      {% empty %}
+        <li class="px-5 py-10 text-center text-sm text-slate-500">Nenhuma reserva para hoje.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

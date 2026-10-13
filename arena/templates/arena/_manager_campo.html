@@ -1,0 +1,7 @@
+{% load arena_extras %}
+<div>
+  <label for="{{ campo.id_for_label }}" class="block text-sm font-medium text-slate-700">{{ campo.label }}</label>
+  <div class="mt-1.5">{{ campo|estilizar }}</div>
+  {% if campo.help_text %}<p class="mt-1.5 text-xs text-slate-500">{{ campo.help_text }}</p>{% endif %}
+  {% for erro in campo.errors %}<p class="mt-1.5 text-xs font-medium text-red-600">{{ erro }}</p>{% endfor %}
+</div>

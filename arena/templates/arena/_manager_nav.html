@@ -1,0 +1,5 @@
+{% load arena_extras %}
+<a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {% if secao == chave %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
+  {% if secao == chave %}{% icone nome_icone "size-5 shrink-0 text-emerald-600" %}{% else %}{% icone nome_icone "size-5 shrink-0 text-slate-400" %}{% endif %}
+  {{ rotulo }}
+</a>
