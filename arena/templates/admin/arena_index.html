@@ -1,0 +1,76 @@
+{% extends "admin/index.html" %}
+{% load arena_extras painel_admin %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .painel { margin-bottom: 24px; }
+  .painel h2.painel-titulo { margin: 0 0 12px; font-size: 1rem; color: var(--body-fg); }
+  .painel-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .painel-kpi { background: var(--body-bg); border: 1px solid var(--hairline-color); border-radius: 10px; padding: 14px 16px; }
+  .painel-kpi .rotulo { display: block; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--body-quiet-color); }
+  .painel-kpi .valor { display: block; margin-top: 6px; font-size: 24px; font-weight: 700; color: var(--body-fg); white-space: nowrap; }
+  .painel-kpi .detalhe { display: block; margin-top: 2px; font-size: 12px; color: var(--body-quiet-color); }
+  .painel-kpi.oportunidade { border-color: #10b981; box-shadow: inset 4px 0 0 #10b981; }
+  .painel-barra { height: 6px; margin-top: 8px; border-radius: 999px; background: var(--hairline-color); overflow: hidden; }
+  .painel-barra div { height: 6px; background: #10b981; }
+  .painel table { width: 100%; }
+  .painel th { white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% indicadores_painel as painel %}
+<div class="painel">
+  <h2 class="painel-titulo">Resumo dos próximos 7 dias</h2>
+  <div class="painel-kpis">
+    <div class="painel-kpi">
+      <span class="rotulo">Partidas hoje</span>
+      <span class="valor">{{ painel.partidas_hoje }}</span>
+      <span class="detalhe">abertas ou lotadas</span>
+    </div>
+    <div class="painel-kpi">
+      <span class="rotulo">Ocupação</span>
+      <span class="valor">{{ painel.vagas_ocupadas }}/{{ painel.vagas_totais }}</span>
+      <div class="painel-barra"><div style="width: {% widthratio painel.vagas_ocupadas painel.vagas_totais|default:1 100 %}%"></div></div>
+    </div>
+    <div class="painel-kpi">
+      <span class="rotulo">Receita confirmada</span>
+      <span class="valor">{{ painel.receita_paga|brl }}</span>
+      <span class="detalhe">inscrições pagas</span>
+    </div>
+    <div class="painel-kpi">
+      <span class="rotulo">A receber</span>
+      <span class="valor">{{ painel.receita_pendente|brl }}</span>
+      <span class="detalhe">pagamentos pendentes</span>
+    </div>
+    <div class="painel-kpi oportunidade">
+      <span class="rotulo">Horários ociosos</span>
+      <span class="valor">{{ painel.horarios_ociosos }}</span>
+      <a class="detalhe" href="{% url 'admin:arena_timeslot_changelist' %}?status__exact=ocioso&amp;periodo=futuros">Converter em partidas &rarr;</a>
+    </div>
+  </div>
+
+  {% if painel.proximas %}
+    <div class="module">
+      <table>
+        <caption>Próximas partidas abertas</caption>
+        <thead>
+          <tr><th scope="col">Quando</th><th scope="col">Arena</th><th scope="col">Quadra</th><th scope="col">Ocupação</th><th scope="col">Status</th></tr>
+        </thead>
+        <tbody>
+          {% for partida in painel.proximas %}
+            <tr>
+              <td><a href="{% url 'admin:arena_openmatch_change' partida.pk %}">{{ partida.time_slot.data|date:"D, d/m" }} · {{ partida.time_slot.intervalo }}</a></td>
+              <td>{{ partida.time_slot.court.arena }}</td>
+              <td>{{ partida.time_slot.court.nome_ou_numero }}</td>
+              <td>{{ partida.vagas_ocupadas }}/{{ partida.vagas_totais }}</td>
+              <td>{{ partida.get_status_display }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{{ block.super }}
+{% endblock %}

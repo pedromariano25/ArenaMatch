@@ -7,9 +7,9 @@ formulários.
 """
 
 import uuid
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Self
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
@@ -19,6 +19,7 @@ from django.db import models, transaction
 from django.db.models import F, Q
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -165,6 +166,20 @@ class CustomUser(BaseModel, AbstractUser):
 
     def __str__(self) -> str:
         return self.get_full_name() or self.username
+
+    @property
+    def nome_publico(self) -> str:
+        """Nome exibido a outros jogadores: primeiro nome e inicial do sobrenome."""
+        if not self.first_name:
+            return self.username
+        inicial = f" {self.last_name.strip()[0]}." if self.last_name.strip() else ""
+        return f"{self.first_name.split()[0]}{inicial}"
+
+    @property
+    def iniciais(self) -> str:
+        """Até duas iniciais, usadas nos avatares."""
+        partes = [*self.first_name.split()[:1], *self.last_name.split()[-1:]]
+        return "".join(parte[0] for parte in partes).upper() or self.username[:2].upper()
 
     def clean(self) -> None:
         """Normaliza o e-mail (via ``AbstractUser``) e o CPF."""
@@ -321,15 +336,23 @@ class TimeSlot(ValidatedModel):
         ]
 
     def __str__(self) -> str:
-        return (
-            f"{self.court} · {self.data:%d/%m/%Y} "
-            f"{self.hora_inicio:%H:%M}–{self.hora_fim:%H:%M}"
-        )
+        return f"{self.court} · {self.data:%d/%m/%Y} {self.intervalo}"
+
+    @property
+    def intervalo(self) -> str:
+        """Faixa de horário no formato ``19:00–20:00``."""
+        return f"{self.hora_inicio:%H:%M}–{self.hora_fim:%H:%M}"
 
     @property
     def inicio(self) -> datetime:
         """Data e hora de início, no fuso horário do projeto."""
         return timezone.make_aware(datetime.combine(self.data, self.hora_inicio))
+
+    @property
+    def fim(self) -> datetime:
+        """Data e hora de término (00:00 é a meia-noite do dia seguinte)."""
+        dia = self.data + timedelta(days=1) if self.hora_fim == MEIA_NOITE else self.data
+        return timezone.make_aware(datetime.combine(dia, self.hora_fim))
 
     @property
     def ja_comecou(self) -> bool:
@@ -392,6 +415,50 @@ class TimeSlot(ValidatedModel):
 # --- Partidas abertas (B2C) --------------------------------------------------
 
 
+class OpenMatchQuerySet(models.QuerySet):
+    """Consultas de partidas compartilhadas pela vitrine web, pela API e pelo admin."""
+
+    def com_relacionados(self) -> Self:
+        """Carrega horário, quadra e arena na mesma consulta (evita N+1)."""
+        return self.select_related("time_slot__court__arena")
+
+    def futuras(self) -> Self:
+        """Partidas cujo horário ainda não começou."""
+        agora = timezone.localtime()
+        return self.filter(
+            Q(time_slot__data__gt=agora.date())
+            | Q(time_slot__data=agora.date(), time_slot__hora_inicio__gt=agora.time())
+        )
+
+    def vitrine(self) -> Self:
+        """Partidas exibidas aos jogadores: Aberta ou Lotada e ainda por começar."""
+        return (
+            self.futuras()
+            .filter(status__in=STATUS_PARTIDA_ATIVA)
+            .com_relacionados()
+            .order_by("time_slot__data", "time_slot__hora_inicio")
+        )
+
+    def filtrar(
+        self,
+        *,
+        nivel: str | None = None,
+        piso: str | None = None,
+        arena: str | None = None,
+        de: date | None = None,
+        ate: date | None = None,
+    ) -> Self:
+        """Aplica os filtros opcionais da vitrine (``arena`` é o slug da arena)."""
+        filtros: dict[str, Any] = {
+            "nivel_competitividade": nivel,
+            "time_slot__court__tipo_piso": piso,
+            "time_slot__court__arena__slug": arena,
+            "time_slot__data__gte": de,
+            "time_slot__data__lte": ate,
+        }
+        return self.filter(**{campo: valor for campo, valor in filtros.items() if valor})
+
+
 class OpenMatch(ValidatedModel):
     """Partida aberta à comunidade, criada a partir de um horário livre da agenda."""
 
@@ -432,6 +499,8 @@ class OpenMatch(ValidatedModel):
         "Use Finalizada ou Cancelada para encerrar a partida.",
     )
 
+    objects = OpenMatchQuerySet.as_manager()
+
     class Meta:
         verbose_name = "partida aberta"
         verbose_name_plural = "partidas abertas"
@@ -447,6 +516,26 @@ class OpenMatch(ValidatedModel):
 
     def __str__(self) -> str:
         return f"Partida · {self.time_slot}"
+
+    def get_absolute_url(self) -> str:
+        return reverse("arena:partida_detalhe", args=[self.pk])
+
+    @property
+    def vagas_ocupadas(self) -> int:
+        """Quantidade de vagas já ocupadas por inscrições pendentes ou pagas."""
+        return self.vagas_totais - self.vagas_disponiveis
+
+    @property
+    def percentual_ocupado(self) -> int:
+        """Ocupação de 0 a 100, usada nas barras de progresso."""
+        if not self.vagas_totais:
+            return 0
+        return round(100 * self.vagas_ocupadas / self.vagas_totais)
+
+    @property
+    def aceita_inscricoes(self) -> bool:
+        """Indica se a partida está aberta (com vaga) e ainda não começou."""
+        return self.status == StatusPartida.ABERTA and not self.time_slot.ja_comecou
 
     def clean(self) -> None:
         """Valida o horário de origem e recalcula as vagas disponíveis e o status."""
@@ -554,6 +643,28 @@ class Booking(ValidatedModel):
     def ocupa_vaga(self) -> bool:
         """Indica se a inscrição ocupa vaga (pagamento pendente ou pago)."""
         return self.status_pagamento in STATUS_OCUPA_VAGA
+
+    @property
+    def pode_cancelar(self) -> bool:
+        """O jogador pode desistir de inscrições pendentes antes do início da partida."""
+        return (
+            self.status_pagamento == StatusPagamento.PENDENTE
+            and not self.open_match.time_slot.ja_comecou
+        )
+
+    def cancelar(self) -> None:
+        """Cancela a inscrição pendente: ela é excluída e a vaga volta para a partida.
+
+        Raises:
+            ValidationError: se a inscrição já foi paga/reembolsada ou a partida começou.
+        """
+        if not self.pode_cancelar:
+            raise ValidationError(
+                "Só é possível cancelar inscrições com pagamento pendente, "
+                "antes do início da partida. Fale com a arena para reembolsos.",
+                code="cancelamento_negado",
+            )
+        self.delete()
 
     def clean(self) -> None:
         """Impede a troca de partida ou jogador e valida a vaga em novas ocupações."""
