@@ -22,6 +22,15 @@ def normalizar_documento(valor: str | None) -> str:
     return _NAO_ALFANUMERICO.sub("", valor or "").upper()
 
 
+def digitos_verificadores_cpf(base: str) -> str:
+    """Calcula os 2 dígitos verificadores para os 9 primeiros dígitos de um CPF."""
+    for tamanho in (9, 10):
+        pesos = range(tamanho + 1, 1, -1)
+        soma = sum(int(digito) * peso for digito, peso in zip(base[:tamanho], pesos))
+        base += str((soma * 10 % 11) % 10)
+    return base[-2:]
+
+
 def validar_cpf(valor: str) -> None:
     """Valida um CPF, com ou sem máscara, pelos dígitos verificadores.
 
@@ -32,11 +41,8 @@ def validar_cpf(valor: str) -> None:
     cpf = normalizar_documento(valor)
     if not re.fullmatch(r"\d{11}", cpf) or len(set(cpf)) == 1:
         raise ValidationError("CPF inválido.", code="cpf_invalido")
-    for tamanho in (9, 10):
-        pesos = range(tamanho + 1, 1, -1)
-        soma = sum(int(digito) * peso for digito, peso in zip(cpf[:tamanho], pesos))
-        if (soma * 10 % 11) % 10 != int(cpf[tamanho]):
-            raise ValidationError("CPF inválido.", code="cpf_invalido")
+    if cpf[9:] != digitos_verificadores_cpf(cpf[:9]):
+        raise ValidationError("CPF inválido.", code="cpf_invalido")
 
 
 def _digito_verificador_cnpj(base: str) -> str:
@@ -45,6 +51,12 @@ def _digito_verificador_cnpj(base: str) -> str:
     soma = sum((ord(caractere) - 48) * peso for caractere, peso in zip(base, pesos))
     resto = soma % 11
     return "0" if resto < 2 else str(11 - resto)
+
+
+def digitos_verificadores_cnpj(base: str) -> str:
+    """Calcula os 2 dígitos verificadores para os 12 primeiros caracteres de um CNPJ."""
+    primeiro = _digito_verificador_cnpj(base[:12])
+    return primeiro + _digito_verificador_cnpj(base[:12] + primeiro)
 
 
 def validar_cnpj(valor: str) -> None:
@@ -60,7 +72,5 @@ def validar_cnpj(valor: str) -> None:
     cnpj = normalizar_documento(valor)
     if not re.fullmatch(r"[0-9A-Z]{12}\d{2}", cnpj) or len(set(cnpj)) == 1:
         raise ValidationError("CNPJ inválido.", code="cnpj_invalido")
-    primeiro = _digito_verificador_cnpj(cnpj[:12])
-    segundo = _digito_verificador_cnpj(cnpj[:12] + primeiro)
-    if cnpj[12:] != primeiro + segundo:
+    if cnpj[12:] != digitos_verificadores_cnpj(cnpj):
         raise ValidationError("CNPJ inválido.", code="cnpj_invalido")
