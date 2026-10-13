@@ -1,0 +1,65 @@
+# =============================================================================
+# ArenaMatch — .gitignore (Python / Django)
+# =============================================================================
+
+# --- Segredos e configuração local --------------------------------------------
+# Variáveis de ambiente reais nunca são versionadas; apenas o modelo.
+.env
+.env.*
+!.env.example
+local_settings.py
+*.pem
+*.key
+
+# --- Banco de dados local -----------------------------------------------------
+# Contém dados de usuários (CPF, telefone, pagamentos): NUNCA versionar.
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3
+*.sqlite3-*
+
+# --- Ambientes virtuais -------------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+
+# --- Python: bytecode, builds e pacotes ---------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*$py.class
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Testes, cobertura e ferramentas de qualidade -----------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# --- Django: arquivos gerados em tempo de execução ----------------------------
+*.log
+/media/
+/staticfiles/
+
+# --- Editores e ferramentas ---------------------------------------------------
+# VS Code: ignora tudo, exceto as extensões recomendadas para o time.
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+.claude/settings.local.json
+
+# --- Arquivos de sistema operacional ------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
