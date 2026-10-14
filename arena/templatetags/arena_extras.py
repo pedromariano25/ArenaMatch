@@ -25,8 +25,9 @@ _CLASSES_CAMPO = (
 )
 
 _CLASSES_NIVEL = {
+    "aberta": "bg-violet-50 text-violet-700 ring-violet-200",
     "iniciante": "bg-sky-50 text-sky-700 ring-sky-200",
-    "misto": "bg-violet-50 text-violet-700 ring-violet-200",
+    "intermediario": "bg-amber-50 text-amber-700 ring-amber-200",
     "avancado": "bg-rose-50 text-rose-700 ring-rose-200",
 }
 
@@ -262,7 +263,7 @@ def link_whatsapp(telefone: str) -> str:
 
 @register.filter
 def classes_nivel(nivel: str) -> str:
-    return _CLASSES_NIVEL.get(nivel, _CLASSES_NIVEL["misto"])
+    return _CLASSES_NIVEL.get(nivel, _CLASSES_NIVEL["aberta"])
 
 
 @register.filter

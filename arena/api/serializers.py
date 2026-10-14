@@ -7,6 +7,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 
+from ..jogadores import EXPERIENCIAS, FREQUENCIAS
+
 from ..models import (
     Arena,
     Booking,
@@ -16,6 +18,7 @@ from ..models import (
     MetodoPagamento,
     OpenMatch,
     Payment,
+    PlayerProfile,
     Posicao,
     StatusPagamento,
 )
@@ -198,8 +201,44 @@ class LancamentoSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class PerfilJogadorSerializer(serializers.ModelSerializer):
+    """Perfil esportivo. Envie o questionário para (re)calcular o nível declarado."""
+
+    nivel_display = serializers.CharField(source="get_nivel_display", read_only=True)
+    autoavaliacao = serializers.IntegerField(min_value=1, max_value=5, write_only=True, required=False)
+    frequencia = serializers.ChoiceField(choices=[c for c, _, _ in FREQUENCIAS], write_only=True, required=False)
+    experiencia = serializers.ChoiceField(choices=[c for c, _, _ in EXPERIENCIAS], write_only=True, required=False)
+
+    class Meta:
+        model = PlayerProfile
+        fields = (
+            "apelido",
+            "posicao",
+            "joga_no_gol",
+            "regiao",
+            "nivel",
+            "nivel_display",
+            "nivel_origem",
+            "goleiro_suspenso_ate",
+            "autoavaliacao",
+            "frequencia",
+            "experiencia",
+        )
+        read_only_fields = ("nivel", "nivel_origem", "goleiro_suspenso_ate")
+
+    def validate(self, dados: dict[str, Any]) -> dict[str, Any]:
+        questionario = [campo for campo in ("autoavaliacao", "frequencia", "experiencia") if campo in dados]
+        if questionario and len(questionario) != 3:
+            raise serializers.ValidationError("Envie as três respostas do questionário juntas.")
+        if self.instance is None and not questionario:
+            raise serializers.ValidationError("Responda o questionário para definir o seu nível.")
+        return dados
+
+
 class PerfilSerializer(serializers.ModelSerializer):
     """Dados do usuário autenticado."""
+
+    perfil = PerfilJogadorSerializer(read_only=True)
 
     class Meta:
         model = CustomUser
@@ -212,6 +251,7 @@ class PerfilSerializer(serializers.ModelSerializer):
             "telefone",
             "is_player",
             "is_manager",
+            "perfil",
         )
         read_only_fields = fields
 

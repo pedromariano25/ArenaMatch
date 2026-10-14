@@ -19,7 +19,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from . import notificacoes, razao
+from . import jogadores, notificacoes, razao
 from .formatacao import formatar_brl
 from .models import (
     STATUS_INSCRICAO_ATIVA,
@@ -60,6 +60,7 @@ def iniciar_checkout(
         metodo = MetodoPagamento.GRATUITO
     elif metodo not in METODOS_PAGOS:
         raise ValidationError("Escolha Pix, cartão ou crédito para pagar a vaga.")
+    jogadores.validar_elegibilidade(partida, jogador, posicao)
     gateway = obter_gateway()
     with transaction.atomic():
         partida = OpenMatch.objects.select_for_update().get(pk=partida.pk)
@@ -394,6 +395,7 @@ def entrar_na_lista_de_espera(
     ).exists()
     if ja_inscrito:
         raise ValidationError("Você já está nesta partida.")
+    jogadores.validar_elegibilidade(partida, jogador, posicao)
     lugar, _ = WaitlistEntry.objects.get_or_create(
         partida=partida, jogador=jogador, defaults={"posicao": posicao}
     )

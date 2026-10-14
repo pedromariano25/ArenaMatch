@@ -28,7 +28,7 @@
   </div>
 
   <div class="mt-3 flex flex-wrap gap-2">
-    <span class="rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ partida.nivel_competitividade|classes_nivel }}">{{ partida.get_nivel_competitividade_display }}</span>
+    <span class="rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ partida.nivel_competitividade|classes_nivel }}" title="Aceita {{ partida.rotulo_faixa }}">{{ partida.get_nivel_competitividade_display }}</span>
     <span class="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200">{% icone "jogadores" "size-3.5" %} {{ partida.vagas_totais }} jogadores</span>
     {% if partida.jogo_confirmado %}<span class="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Jogo confirmado</span>{% endif %}
   </div>

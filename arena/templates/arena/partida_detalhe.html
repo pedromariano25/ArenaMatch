@@ -12,7 +12,7 @@
       <span class="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
         <span class="size-1.5 rounded-full {{ quadra.tipo_piso|cor_piso }}" aria-hidden="true"></span>{{ quadra.get_tipo_piso_display }}
       </span>
-      <span class="rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ partida.nivel_competitividade|classes_nivel }}">Nível {{ partida.get_nivel_competitividade_display }}</span>
+      <span class="rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ partida.nivel_competitividade|classes_nivel }}">Nível {{ partida.get_nivel_competitividade_display }} · {{ partida.rotulo_faixa }}</span>
       <span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ partida.get_status_display }}</span>
       {% if partida.jogo_confirmado %}
         <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Jogo confirmado</span>
@@ -54,7 +54,7 @@
       <ul class="mt-3 grid grid-cols-4 gap-4 sm:grid-cols-6">
         {% for jogador in linha %}
           <li class="flex flex-col items-center gap-1.5 text-center">
-            <span class="grid size-11 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">{{ jogador.iniciais }}</span>
+            <span class="relative grid size-11 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">{{ jogador.iniciais }}{% if jogador.perfil %}<span class="absolute -bottom-1 -right-1 grid size-5 place-items-center rounded-full bg-emerald-600 text-[10px] font-bold text-white ring-2 ring-white">{{ jogador.perfil.nivel }}</span>{% endif %}</span>
             <span class="w-full truncate text-xs text-slate-700">{{ jogador.nome_publico }}</span>
           </li>
         {% endfor %}
@@ -136,7 +136,12 @@
             {% endif %}
             <a href="{% url 'arena:inscricao' minha_inscricao.pk %}" class="mt-3 inline-flex text-sm font-semibold underline underline-offset-2">Ver comprovante</a>
           </div>
+        {% elif partida.aceita_inscricoes and motivo_inelegivel %}
+          <p class="rounded-lg bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-inset ring-amber-600/20">{{ motivo_inelegivel }}</p>
         {% elif partida.aceita_inscricoes %}
+          {% if perfil_incompleto %}
+            <p class="mb-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">Antes da primeira partida, você responde 3 perguntas rápidas sobre como joga.</p>
+          {% endif %}
           {% if user.is_authenticated and not user.is_player %}
             <p class="rounded-lg bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-inset ring-amber-600/20">Sua conta não é de jogador. Use uma conta de jogador para reservar vagas.</p>
           {% else %}

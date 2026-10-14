@@ -26,4 +26,5 @@ urlpatterns = [
     path("auth/cadastro/", views.CadastroJogadorView.as_view(), name="cadastro"),
     path("auth/token/", obtain_auth_token, name="token"),
     path("me/", views.PerfilView.as_view(), name="perfil"),
+    path("perfil-jogador/", views.PerfilJogadorView.as_view(), name="perfil_jogador"),
 ]

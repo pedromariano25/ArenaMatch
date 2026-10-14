@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from . import checkout, notificacoes, razao
+from . import checkout, jogadores, notificacoes, razao
 from .models import (
     STATUS_INSCRICAO_ATIVA,
     STATUS_PARTIDA_ATIVA,
@@ -119,6 +119,7 @@ def finalizar_partidas(agora: datetime | None = None) -> int:
             if partida.status not in STATUS_PARTIDA_ATIVA:
                 continue
             checkout.expirar_reservas_da_partida(partida, agora)
+            jogadores.registrar_faltas(partida)
             partida.refresh_from_db()
             partida.status = StatusPartida.FINALIZADA
             partida.save()

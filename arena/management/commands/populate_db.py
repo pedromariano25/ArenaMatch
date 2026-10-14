@@ -30,13 +30,17 @@ from django.test.utils import override_settings
 from django.utils import timezone
 from django.utils.text import slugify
 
-from arena import checkout, partidas, razao
+from arena import checkout, jogadores, partidas, razao
 from arena.gestao import vagas_goleiro_sugeridas
 from arena.models import (
+    FAIXAS_DE_NIVEL,
     MEIA_NOITE,
     STATUS_HORARIO_LIVRE,
     Arena,
+    AvaliacaoPartida,
     Booking,
+    DirecaoNivel,
+    Elogio,
     Court,
     CustomUser,
     LedgerAccount,
@@ -47,12 +51,17 @@ from arena.models import (
     OpenMatch,
     Payment,
     Payout,
+    PercepcaoNivel,
+    PlayerProfile,
     Posicao,
+    PosicaoJogador,
+    SinalNivel,
     StatusHorario,
     StatusInscricao,
     StatusPartida,
     TimeSlot,
     TipoPiso,
+    TipoElogio,
     TipoReserva,
     WaitlistEntry,
     devolver_vaga_apos_exclusao,
@@ -141,7 +150,30 @@ JOGADORES = [
     ("Igor", "Monteiro"),
     ("Caio", "Freitas"),
     ("Renan", "Castro"),
+    ("Mariana", "Lopes"),
+    ("André", "Vieira"),
+    ("Paulo", "Rezende"),
+    ("Fernando", "Cunha"),
+    ("Letícia", "Prado"),
+    ("Otávio", "Brandão"),
+    ("Samuel", "Antunes"),
+    ("Hugo", "Siqueira"),
+    ("Tiago", "Peixoto"),
+    ("Daniel", "Fonseca"),
+    ("Natália", "Ramos"),
+    ("Murilo", "Assis"),
+    ("Henrique", "Coelho"),
+    ("Arthur", "Batista"),
+    ("Sofia", "Campos"),
+    ("Enzo", "Moura"),
 ]
+
+# Distribuição de níveis (1 a 5) dos jogadores de demonstração.
+NIVEIS_DOS_JOGADORES = [1] * 6 + [2] * 9 + [3] * 13 + [4] * 10 + [5] * 6
+GOLEIROS_DE_OFICIO = 5
+TOPAM_O_GOL = 6
+CHECK_IN_NAS_PARTIDAS = 0.75  # parte das arenas que faz check-in pelo QR
+FALTA_POR_JOGADOR = 0.04
 
 # Permissões do grupo Gestores. O escopo (só as próprias arenas) é aplicado pelo admin.
 PERMISSOES_GESTOR = {
@@ -266,6 +298,8 @@ class Command(BaseCommand):
 
     def _limpar_banco(self) -> None:
         """Apaga os dados na ordem exigida pelas FKs ``PROTECT`` (razão e inscrições primeiro)."""
+        for modelo in (AvaliacaoPartida, Elogio, SinalNivel, PlayerProfile):
+            modelo.objects.all().delete()
         LedgerEntry.objects.all().delete()
         Payout.objects.all().delete()
         LedgerAccount.objects.all().delete()
@@ -311,6 +345,25 @@ class Command(BaseCommand):
             for nome, sobrenome in JOGADORES
         ]
         demo = self._criar_usuario("jogador", "Jogador", "Demo", SENHA_JOGADOR, is_player=True)
+        niveis = list(NIVEIS_DOS_JOGADORES)
+        self.rng.shuffle(niveis)
+        ordem = list(range(len(jogadores)))
+        self.rng.shuffle(ordem)
+        goleiros = set(ordem[:GOLEIROS_DE_OFICIO])
+        topam_o_gol = set(ordem[GOLEIROS_DE_OFICIO : GOLEIROS_DE_OFICIO + TOPAM_O_GOL])
+        linha = (PosicaoJogador.DEFESA, PosicaoJogador.MEIO, PosicaoJogador.ATAQUE)
+        regioes = ("Pinheiros", "Vila Mariana", "Centro", "Savassi", "Copacabana", "Tijuca", "Moema")
+        for indice, jogador in enumerate(jogadores):
+            PlayerProfile.objects.create(
+                jogador=jogador,
+                nivel=niveis[indice % len(niveis)],
+                posicao=PosicaoJogador.GOLEIRO if indice in goleiros else self.rng.choice(linha),
+                joga_no_gol=indice in topam_o_gol,
+                regiao=self.rng.choice(regioes),
+            )
+        PlayerProfile.objects.create(
+            jogador=demo, nivel=3, posicao=PosicaoJogador.MEIO, joga_no_gol=True, apelido="Demo", regiao="Pinheiros"
+        )
         return demo, jogadores
 
     def _criar_usuario(
@@ -402,15 +455,23 @@ class Command(BaseCommand):
         return livres
 
     def _abrir_partida(self, horario: TimeSlot) -> OpenMatch:
-        """Converte um horário livre em partida aberta, como faria o gestor na agenda."""
+        """Converte um horário livre em partida aberta, como faria o gestor na agenda.
+
+        O nível da partida só restringe a faixa se houver jogadores suficientes nela.
+        """
         quadra = horario.court
         vagas = quadra.capacidade_padrao
+        nivel = self.rng.choices(list(NivelCompetitividade), weights=(40, 20, 25, 15))[0]
+        minimo, maximo = FAIXAS_DE_NIVEL[nivel]
+        na_faixa = sum(1 for nivel_jogador in NIVEIS_DOS_JOGADORES if minimo <= nivel_jogador <= maximo)
+        if na_faixa < vagas + 2:
+            nivel = NivelCompetitividade.ABERTA
         return OpenMatch.objects.create(
             time_slot=horario,
             vagas_totais=vagas,
             vagas_goleiro=vagas_goleiro_sugeridas(vagas),
             valor_total_aluguel=Decimal(self.rng.choice(ALUGUEIS_POR_PISO[quadra.tipo_piso])),
-            nivel_competitividade=self.rng.choices(list(NivelCompetitividade), weights=(45, 25, 30))[0],
+            nivel_competitividade=nivel,
         )
 
     # --- Inscrições ----------------------------------------------------------
@@ -433,13 +494,43 @@ class Command(BaseCommand):
         candidatos = [j for j in self.jogadores if not excluir or j.pk not in excluir]
         self.rng.shuffle(candidatos)
         compradas = []
-        for jogador in candidatos[: partida.vagas_goleiro]:
+        goleiros = [
+            j for j in candidatos if jogadores.motivo_inelegivel(partida, j, Posicao.GOLEIRO) is None
+        ][: partida.vagas_goleiro]
+        for jogador in goleiros:
             if inscricao := self._comprar(partida, jogador, Posicao.GOLEIRO):
                 compradas.append(inscricao)
-        for jogador in candidatos[partida.vagas_goleiro :][:quantidade]:
+        linha = [j for j in candidatos if j not in goleiros and jogadores.motivo_inelegivel(partida, j) is None]
+        for jogador in linha[:quantidade]:
             if inscricao := self._comprar(partida, jogador):
                 compradas.append(inscricao)
         return compradas
+
+    def _fazer_check_in(self, partida: OpenMatch) -> None:
+        """A recepção lê o QR de quem chegou; alguns jogadores faltam."""
+        if partida.status not in ("aberta", "lotada") or self.rng.random() > CHECK_IN_NAS_PARTIDAS:
+            return
+        for inscricao in partida.inscricoes.filter(status=StatusInscricao.CONFIRMADA):
+            # O jogador de demonstração sempre aparece (para poder avaliar o jogo).
+            if inscricao.player_id == self.demo.pk or self.rng.random() > FALTA_POR_JOGADOR:
+                jogadores.registrar_check_in(inscricao)
+
+    def _avaliar(self, partida: OpenMatch, alvo_de_sinais: CustomUser | None) -> None:
+        """Parte de quem jogou avalia a partida, elogia colegas e, às vezes, sinaliza o nível."""
+        partida.refresh_from_db()
+        jogaram = list(partida.inscricoes.filter(status=StatusInscricao.CONFIRMADA, faltou=False).select_related("player"))
+        avaliadores = [i.player for i in jogaram if i.player != self.demo and i.player != alvo_de_sinais]
+        self.rng.shuffle(avaliadores)
+        alvo_jogou = alvo_de_sinais is not None and any(i.player == alvo_de_sinais for i in jogaram)
+        for posicao, autor in enumerate(avaliadores[: max(1, len(avaliadores) // 2)]):
+            colegas = [i.player for i in jogaram if i.player != autor]
+            elogios = {
+                str(colega.pk): self.rng.choice(TipoElogio.values)
+                for colega in self.rng.sample(colegas, min(2, len(colegas)))
+            }
+            sinais = {str(alvo_de_sinais.pk): DirecaoNivel.ACIMA} if alvo_jogou and posicao < 2 else {}
+            percepcao = self.rng.choices(PercepcaoNivel.values, weights=(15, 70, 15))[0]
+            jogadores.registrar_avaliacao(partida, autor, percepcao, elogios, sinais)
 
     # --- Histórico (passado simulado) ---------------------------------------
 
@@ -460,6 +551,16 @@ class Command(BaseCommand):
                     partidas_passadas.append(self._abrir_partida(horario))
 
         sem_quorum = self.rng.choice(partidas_passadas)
+        # O jogador de demonstração já jogou (antes de as partidas lotarem) e também
+        # desistiu de uma partida, o que lhe rendeu crédito.
+        elegiveis = [
+            p for p in partidas_passadas if p is not sem_quorum and jogadores.motivo_inelegivel(p, self.demo) is None
+        ]
+        for partida in elegiveis[-3:-1]:
+            self._comprar(partida, self.demo, metodo=MetodoPagamento.PIX)
+        if elegiveis and (desistencia := self._comprar(elegiveis[0], self.demo, metodo=MetodoPagamento.CARTAO)):
+            checkout.cancelar_inscricao(desistencia)
+
         for partida in partidas_passadas:
             if partida is sem_quorum:
                 self._preencher(partida, 2)
@@ -469,27 +570,38 @@ class Command(BaseCommand):
             # Desistências com mais de 24h de antecedência viram crédito.
             if pagas and self.rng.random() < 0.3:
                 checkout.cancelar_inscricao(self.rng.choice(pagas))
-        # O jogador de demonstração já jogou e também desistiu de uma partida (e tem crédito).
-        jogadas = [p for p in partidas_passadas if p is not sem_quorum][:2]
-        for partida in jogadas:
-            self._comprar(partida, self.demo, metodo=MetodoPagamento.PIX)
-        if desistencia := self._comprar(partidas_passadas[-1], self.demo, metodo=MetodoPagamento.CARTAO):
-            checkout.cancelar_inscricao(desistencia)
 
-        # O tempo passa: prazos do mínimo de jogadores, fim dos jogos e repasses.
-        eventos = sorted(
-            [(p.prazo_quorum, "quorum") for p in partidas_passadas]
-            + [(p.time_slot.fim + timedelta(minutes=5), "fim") for p in partidas_passadas]
-            + [(_momento(dia, 6), "repasse") for dia in dias + [hoje]]
+        # Um jogador que se declarou abaixo do que joga recebe sinais dos colegas.
+        alvo_de_sinais = next(
+            (j for j in self.jogadores if j.perfil.nivel == 2 and j.perfil.posicao != PosicaoJogador.GOLEIRO), None
         )
-        for momento, evento in eventos:
+
+        # O tempo passa: prazos do mínimo, check-in, fim dos jogos, avaliações e repasses.
+        por_id = {p.pk: p for p in partidas_passadas}
+        eventos = sorted(
+            [(p.prazo_quorum, "quorum", p.pk) for p in partidas_passadas]
+            + [(p.time_slot.inicio + timedelta(minutes=10), "check_in", p.pk) for p in partidas_passadas]
+            + [(p.time_slot.fim + timedelta(minutes=5), "fim", p.pk) for p in partidas_passadas]
+            + [(p.time_slot.fim + timedelta(hours=2), "avaliacao", p.pk) for p in partidas_passadas]
+            + [(_momento(dia, 6), "repasse", None) for dia in dias + [hoje]],
+            key=lambda evento: evento[0],
+        )
+        for momento, evento, partida_id in eventos:
             if momento >= _AGORA_REAL():
                 continue
             self.relogio.ir_para(momento)
+            partida = por_id.get(partida_id)
+            if partida is not None:
+                partida.refresh_from_db()
             if evento == "quorum":
                 partidas.conferir_quorum()
+            elif evento == "check_in":
+                self._fazer_check_in(partida)
             elif evento == "fim":
                 partidas.finalizar_partidas()
+            elif evento == "avaliacao":
+                if partida.status == StatusPartida.FINALIZADA:
+                    self._avaliar(partida, alvo_de_sinais)
             else:
                 razao.gerar_repasses()
 
@@ -510,7 +622,11 @@ class Command(BaseCommand):
         for partida in partidas_futuras:
             if partida in lotadas:
                 inscritos = self._preencher(partida, partida.vagas_linha)
-                fila = [j for j in self.jogadores if j.pk not in {i.player_id for i in inscritos}]
+                inscritos_ids = {i.player_id for i in inscritos}
+                fila = [
+                    j for j in self.jogadores
+                    if j.pk not in inscritos_ids and jogadores.motivo_inelegivel(partida, j) is None
+                ]
                 for jogador in self.rng.sample(fila, min(2, len(fila))):
                     checkout.entrar_na_lista_de_espera(partida, jogador)
             else:
@@ -525,7 +641,11 @@ class Command(BaseCommand):
                 self._comprar(partida, livre, metodo=MetodoPagamento.PIX, pagar=False)
 
         # A conta de demonstração começa com duas partidas marcadas, uma paga com o crédito.
-        distantes = [p for p in abertas if p.time_slot.inicio > timezone.now() + timedelta(days=1)]
+        distantes = [
+            p for p in abertas
+            if p.time_slot.inicio > timezone.now() + timedelta(days=1)
+            and jogadores.motivo_inelegivel(p, self.demo) is None
+        ]
         for partida, metodo in zip(distantes[:2], (MetodoPagamento.PIX, MetodoPagamento.CREDITO)):
             if self._comprar(partida, self.demo, metodo=metodo) is None:
                 self._comprar(partida, self.demo, metodo=MetodoPagamento.PIX)

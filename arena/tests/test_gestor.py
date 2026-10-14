@@ -171,13 +171,13 @@ class AgendaTest(PortalBase):
         cancelada = criar_partida(horario=horario)
         cancelada.status = StatusPartida.CANCELADA
         cancelada.save()
-        gestao.abrir_partida(self.quadra, horario.data, time(20), time(21), Decimal("20"), "misto")
+        gestao.abrir_partida(self.quadra, horario.data, time(20), time(21), Decimal("20"), "aberta")
         cancelada.refresh_from_db()
         self.assertEqual(cancelada.status, StatusPartida.ABERTA)
 
         criar_horario(self.quadra, time(18), time(19), tipo_reserva=TipoReserva.MENSALISTA)
         with self.assertRaisesMessage(Exception, "já está reservado"):
-            gestao.abrir_partida(self.quadra, amanha(), time(18), time(19), Decimal("20"), "misto")
+            gestao.abrir_partida(self.quadra, amanha(), time(18), time(19), Decimal("20"), "aberta")
 
     def test_nao_abre_partida_em_quadra_de_outro_gestor(self):
         self.client.post(
@@ -188,7 +188,7 @@ class AgendaTest(PortalBase):
                 "hora_inicio": "19:00",
                 "hora_fim": "20:00",
                 "valor_total_aluguel": "200",
-                "nivel_competitividade": "misto",
+                "nivel_competitividade": "aberta",
             },
         )
         self.assertFalse(OpenMatch.objects.exists())
@@ -197,7 +197,7 @@ class AgendaTest(PortalBase):
     def test_nao_abre_partida_no_passado(self):
         ontem = timezone.localdate() - timedelta(days=1)
         with self.assertRaisesMessage(Exception, "já começou"):
-            gestao.abrir_partida(self.quadra, ontem, time(19), time(20), Decimal("20"), "misto")
+            gestao.abrir_partida(self.quadra, ontem, time(19), time(20), Decimal("20"), "aberta")
 
 
 class FinanceiroTest(PortalBase):

@@ -11,6 +11,7 @@
   </div>
   <p class="hidden text-sm font-medium text-slate-900 sm:block">{{ inscricao.valor_total|brl }}</p>
   <span class="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status|classes_inscricao }}">{% if inscricao.em_repasse %}Em repasse{% else %}{{ inscricao.get_status_display }}{% endif %}</span>
+  {% if inscricao.pode_avaliar %}<span class="shrink-0 rounded-md bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">Avaliar</span>{% endif %}
   {% icone "seta" "size-4 shrink-0 text-slate-300 transition group-hover:text-slate-500" %}
 </a>
 {% endwith %}

@@ -47,6 +47,14 @@ QUORUM_PERCENTUAL_PADRAO = 70
 HORAS_PRAZO_QUORUM_PADRAO = 3
 # A parte da arena fica retida até o dia seguinte à partida, para cobrir cancelamentos.
 DIAS_RETENCAO_SALDO = 1
+# A trava de nível cai esta quantidade de horas antes do prazo do mínimo de jogadores.
+HORAS_LIBERACAO_NIVEL_ANTES_DO_QUORUM = 1
+# Goleiro que falta sem avisar perde a vaga grátis por este período.
+DIAS_SUSPENSAO_GOLEIRO = 14
+# Por quantos dias depois do jogo os jogadores podem avaliá-lo.
+DIAS_PARA_AVALIAR = 7
+# Sinais de colegas diferentes (na mesma direção) que ajustam o nível de um jogador.
+SINAIS_PARA_AJUSTAR_NIVEL = 3
 
 
 def arredondar(valor: Decimal) -> Decimal:
@@ -87,12 +95,75 @@ class StatusHorario(models.TextChoices):
     OCIOSO = "ocioso", "Ocioso"
 
 
-class NivelCompetitividade(models.TextChoices):
-    """Nível técnico esperado dos jogadores de uma partida aberta."""
+class NivelJogador(models.IntegerChoices):
+    """Nível técnico do jogador, de 1 a 5."""
 
-    MISTO = "misto", "Misto"
+    INICIANTE = 1, "Iniciante"
+    RECREATIVO = 2, "Recreativo"
+    INTERMEDIARIO = 3, "Intermediário"
+    AVANCADO = 4, "Avançado"
+    ELITE = 5, "Elite"
+
+
+class NivelCompetitividade(models.TextChoices):
+    """Nível da partida: define a faixa de níveis de jogador aceita."""
+
+    ABERTA = "aberta", "Aberta a todos"
     INICIANTE = "iniciante", "Iniciante"
+    INTERMEDIARIO = "intermediario", "Intermediário"
     AVANCADO = "avancado", "Avançado"
+
+
+# Faixa de níveis de jogador aceita em cada nível de partida. As faixas se sobrepõem
+# de propósito: é a tolerância entre níveis vizinhos.
+FAIXAS_DE_NIVEL = {
+    NivelCompetitividade.ABERTA: (1, 5),
+    NivelCompetitividade.INICIANTE: (1, 2),
+    NivelCompetitividade.INTERMEDIARIO: (2, 4),
+    NivelCompetitividade.AVANCADO: (4, 5),
+}
+
+
+class PosicaoJogador(models.TextChoices):
+    """Posição em que o jogador costuma jogar."""
+
+    GOLEIRO = "goleiro", "Goleiro"
+    DEFESA = "defesa", "Defesa"
+    MEIO = "meio", "Meio-campo"
+    ATAQUE = "ataque", "Ataque"
+
+
+class OrigemNivel(models.TextChoices):
+    """De onde vem o nível atual do jogador."""
+
+    DECLARADO = "declarado", "Declarado pelo jogador"
+    AJUSTADO = "ajustado", "Ajustado pela comunidade"
+
+
+class PercepcaoNivel(models.TextChoices):
+    """Como o jogador sentiu o nível da partida em relação ao anunciado."""
+
+    ABAIXO = "abaixo", "Abaixo do anunciado"
+    NA_MEDIDA = "na_medida", "Na medida"
+    ACIMA = "acima", "Acima do anunciado"
+
+
+class DirecaoNivel(models.TextChoices):
+    """Sinal de que um colega joga fora do nível da partida."""
+
+    ACIMA = "acima", "Joga acima do nível da partida"
+    ABAIXO = "abaixo", "Joga abaixo do nível da partida"
+
+
+class TipoElogio(models.TextChoices):
+    """Elogios (sempre positivos) que um jogador dá a um colega depois do jogo."""
+
+    FAIR_PLAY = "fair_play", "Fair play"
+    PONTUAL = "pontual", "Pontual"
+    BOM_DE_PASSE = "bom_de_passe", "Bom de passe"
+    ARTILHEIRO = "artilheiro", "Artilheiro"
+    PAREDAO = "paredao", "Paredão"
+    RACA = "raca", "Raça"
 
 
 class StatusPartida(models.TextChoices):
@@ -575,6 +646,13 @@ class OpenMatchQuerySet(models.QuerySet):
             .order_by("time_slot__data", "time_slot__hora_inicio")
         )
 
+    def para_o_nivel(self, nivel: int) -> Self:
+        """Partidas cuja faixa aceita jogadores do ``nivel``."""
+        categorias = [
+            categoria for categoria, (minimo, maximo) in FAIXAS_DE_NIVEL.items() if minimo <= nivel <= maximo
+        ]
+        return self.filter(nivel_competitividade__in=categorias)
+
     def filtrar(
         self,
         *,
@@ -667,10 +745,11 @@ class OpenMatch(ValidatedModel):
         help_text="Em branco, usa o padrão da arena.",
     )
     nivel_competitividade = models.CharField(
-        "nível de competitividade",
+        "nível da partida",
         max_length=20,
         choices=NivelCompetitividade.choices,
-        default=NivelCompetitividade.MISTO,
+        default=NivelCompetitividade.ABERTA,
+        help_text="Define a faixa de níveis de jogador aceita.",
     )
     status = models.CharField(
         "status",
@@ -817,6 +896,34 @@ class OpenMatch(ValidatedModel):
             return ZERO
         residuo = self.valor_total_aluguel - self.preco_vaga_base * self.vagas_linha
         return max(residuo, ZERO).quantize(CENTAVO)
+
+    # --- Nível ----------------------------------------------------------------
+
+    @property
+    def faixa_nivel(self) -> tuple[int, int]:
+        """Níveis de jogador aceitos (mínimo, máximo)."""
+        return FAIXAS_DE_NIVEL.get(self.nivel_competitividade, (1, 5))
+
+    @property
+    def rotulo_faixa(self) -> str:
+        minimo, maximo = self.faixa_nivel
+        if (minimo, maximo) == (1, 5):
+            return "todos os níveis"
+        return f"níveis {minimo} a {maximo}"
+
+    @property
+    def liberacao_de_nivel(self) -> datetime:
+        """A partir de quando a partida aceita qualquer nível (se ainda houver vaga)."""
+        return self.prazo_quorum - timedelta(hours=HORAS_LIBERACAO_NIVEL_ANTES_DO_QUORUM)
+
+    @property
+    def nivel_liberado(self) -> bool:
+        return timezone.now() >= self.liberacao_de_nivel
+
+    def aceita_nivel(self, nivel: int) -> bool:
+        """O jogador desse nível pode entrar (na faixa ou com a trava já liberada)."""
+        minimo, maximo = self.faixa_nivel
+        return minimo <= nivel <= maximo or self.nivel_liberado
 
     # --- Mínimo de jogadores (quórum) -------------------------------------------
 
@@ -1071,6 +1178,12 @@ class Booking(ValidatedModel):
         default=ZERO,
         editable=False,
     )
+    check_in_em = models.DateTimeField("check-in em", null=True, blank=True)
+    faltou = models.BooleanField(
+        "faltou",
+        default=False,
+        help_text="Marcado no encerramento quando a arena fez check-in e o jogador não apareceu.",
+    )
 
     objects = BookingQuerySet.as_manager()
 
@@ -1290,6 +1403,134 @@ class WaitlistEntry(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.jogador} · {self.partida.time_slot}"
+
+
+# --- Jogadores: perfil, avaliações e elogios ----------------------------------
+
+
+class PlayerProfile(ValidatedModel):
+    """Perfil esportivo do jogador: nível, posição e região.
+
+    O nível nasce do questionário do cadastro e pode ser ajustado pela comunidade
+    (sinais de colegas diferentes depois dos jogos).
+    """
+
+    jogador = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="perfil",
+        verbose_name="jogador",
+    )
+    apelido = models.CharField("apelido", max_length=30, blank=True)
+    posicao = models.CharField("posição", max_length=10, choices=PosicaoJogador.choices)
+    joga_no_gol = models.BooleanField(
+        "também joga no gol", default=False, help_text="Pode pegar a vaga (grátis) de goleiro."
+    )
+    nivel = models.PositiveSmallIntegerField(
+        "nível",
+        choices=NivelJogador.choices,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    nivel_origem = models.CharField(
+        "origem do nível", max_length=10, choices=OrigemNivel.choices, default=OrigemNivel.DECLARADO
+    )
+    nivel_ajustado_em = models.DateTimeField("nível ajustado em", null=True, blank=True)
+    regiao = models.CharField("bairro ou região", max_length=80, blank=True)
+    goleiro_suspenso_ate = models.DateField(
+        "vaga de goleiro suspensa até",
+        null=True,
+        blank=True,
+        help_text="Goleiro que falta sem avisar perde a vaga grátis por um período.",
+    )
+
+    class Meta:
+        verbose_name = "perfil de jogador"
+        verbose_name_plural = "perfis de jogadores"
+
+    def __str__(self) -> str:
+        return f"{self.jogador} · nível {self.nivel}"
+
+    @property
+    def nome_exibicao(self) -> str:
+        return self.apelido or self.jogador.nome_publico
+
+    @property
+    def goleiro_suspenso(self) -> bool:
+        return self.goleiro_suspenso_ate is not None and self.goleiro_suspenso_ate >= timezone.localdate()
+
+    @property
+    def pode_ser_goleiro(self) -> bool:
+        """Joga no gol (posição ou disposição) e não está suspenso por falta."""
+        return (self.posicao == PosicaoJogador.GOLEIRO or self.joga_no_gol) and not self.goleiro_suspenso
+
+
+class AvaliacaoPartida(BaseModel):
+    """Percepção do jogador sobre o nível da partida (um toque depois do jogo)."""
+
+    autor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="avaliacoes", verbose_name="autor"
+    )
+    partida = models.ForeignKey(
+        OpenMatch, on_delete=models.CASCADE, related_name="avaliacoes", verbose_name="partida"
+    )
+    percepcao = models.CharField("nível da partida", max_length=10, choices=PercepcaoNivel.choices)
+
+    class Meta:
+        verbose_name = "avaliação de partida"
+        verbose_name_plural = "avaliações de partidas"
+        constraints = [
+            models.UniqueConstraint(fields=["autor", "partida"], name="avaliacao_unica_por_partida"),
+        ]
+
+
+class Elogio(BaseModel):
+    """Elogio de um jogador a um colega da mesma partida."""
+
+    autor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="elogios_dados", verbose_name="autor"
+    )
+    alvo = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="elogios_recebidos",
+        verbose_name="elogiado",
+    )
+    partida = models.ForeignKey(OpenMatch, on_delete=models.CASCADE, related_name="elogios", verbose_name="partida")
+    tipo = models.CharField("elogio", max_length=15, choices=TipoElogio.choices)
+
+    class Meta:
+        verbose_name = "elogio"
+        verbose_name_plural = "elogios"
+        constraints = [
+            models.UniqueConstraint(fields=["autor", "alvo", "partida", "tipo"], name="elogio_unico"),
+            models.CheckConstraint(condition=~Q(autor=F("alvo")), name="elogio_nao_e_para_si"),
+        ]
+
+
+class SinalNivel(BaseModel):
+    """Sinal de um colega de que o jogador joga acima ou abaixo do nível da partida."""
+
+    autor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sinais_dados", verbose_name="autor"
+    )
+    alvo = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sinais_recebidos",
+        verbose_name="jogador sinalizado",
+    )
+    partida = models.ForeignKey(
+        OpenMatch, on_delete=models.CASCADE, related_name="sinais_de_nivel", verbose_name="partida"
+    )
+    direcao = models.CharField("direção", max_length=10, choices=DirecaoNivel.choices)
+
+    class Meta:
+        verbose_name = "sinal de nível"
+        verbose_name_plural = "sinais de nível"
+        constraints = [
+            models.UniqueConstraint(fields=["autor", "alvo", "partida"], name="sinal_unico_por_partida"),
+            models.CheckConstraint(condition=~Q(autor=F("alvo")), name="sinal_nao_e_para_si"),
+        ]
 
 
 # --- Pagamentos e razão contábil ---------------------------------------------

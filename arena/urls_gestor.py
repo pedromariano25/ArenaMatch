@@ -20,6 +20,8 @@ urlpatterns = [
         views.GestorCancelarPartidaView.as_view(),
         name="cancelar_partida",
     ),
+    path("check-in/", views.GestorCheckInView.as_view(), name="check_in"),
+    path("check-in/<uuid:pk>/", views.GestorCheckInInscricaoView.as_view(), name="check_in_inscricao"),
     path("financeiro/", views.GestorFinanceiroView.as_view(), name="financeiro"),
     path("configuracoes/", views.GestorConfiguracoesView.as_view(), name="configuracoes"),
 ]

@@ -16,7 +16,9 @@ from arena.models import (
     CustomUser,
     MetodoPagamento,
     OpenMatch,
+    PlayerProfile,
     Posicao,
+    PosicaoJogador,
     StatusHorario,
     StatusInscricao,
     TimeSlot,
@@ -44,8 +46,17 @@ def criar_gestor(**dados: Any) -> CustomUser:
     return criar_usuario(is_manager=True, is_staff=True, **dados)
 
 
-def criar_jogador(**dados: Any) -> CustomUser:
-    return criar_usuario(is_player=True, **dados)
+def criar_jogador(
+    nivel: int | None = 3,
+    posicao: str = PosicaoJogador.MEIO,
+    joga_no_gol: bool = True,
+    **dados: Any,
+) -> CustomUser:
+    """Jogador com perfil (nível 3, meio-campo, topa o gol); ``nivel=None`` cria sem perfil."""
+    jogador = criar_usuario(is_player=True, **dados)
+    if nivel is not None:
+        PlayerProfile.objects.create(jogador=jogador, nivel=nivel, posicao=posicao, joga_no_gol=joga_no_gol)
+    return jogador
 
 
 def criar_arena(gestor: CustomUser | None = None, **dados: Any) -> Arena:

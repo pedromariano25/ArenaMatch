@@ -32,15 +32,19 @@ from .forms import ConverterPartidaForm
 from .models import (
     STATUS_HORARIO_LIVRE,
     Arena,
+    AvaliacaoPartida,
     Booking,
     Court,
     CustomUser,
+    Elogio,
     LedgerAccount,
     LedgerEntry,
     MotivoCancelamento,
     OpenMatch,
     Payment,
     Payout,
+    PlayerProfile,
+    SinalNivel,
     StatusHorario,
     StatusInscricao,
     StatusPagamento,
@@ -851,3 +855,50 @@ class PayoutAdmin(SomenteLeituraAdmin):
     @admin.display(description="valor", ordering="valor")
     def valor_formatado(self, obj: Payout) -> str:
         return formatar_brl(obj.valor)
+
+
+# --- Jogadores ----------------------------------------------------------------
+
+
+@admin.register(PlayerProfile)
+class PlayerProfileAdmin(admin.ModelAdmin):
+    """Perfis de jogadores (nível, posição). A equipe pode corrigir o nível manualmente."""
+
+    list_display = ("jogador", "nivel", "nivel_origem", "posicao", "joga_no_gol", "regiao", "goleiro_suspenso_ate")
+    list_filter = ("nivel", "nivel_origem", "posicao", "joga_no_gol")
+    search_fields = ("jogador__username", "jogador__first_name", "jogador__last_name", "apelido")
+    list_select_related = ("jogador",)
+    readonly_fields = ("nivel_ajustado_em", "created_at", "updated_at")
+
+
+class _RegistroDeAvaliacaoAdmin(admin.ModelAdmin):
+    """Avaliações vêm dos jogadores: a equipe só consulta (e remove abusos)."""
+
+    list_select_related = ("autor", "partida__time_slot__court")
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+
+@admin.register(AvaliacaoPartida)
+class AvaliacaoPartidaAdmin(_RegistroDeAvaliacaoAdmin):
+    list_display = ("autor", "partida", "percepcao", "created_at")
+    list_filter = ("percepcao",)
+
+
+@admin.register(Elogio)
+class ElogioAdmin(_RegistroDeAvaliacaoAdmin):
+    list_display = ("autor", "alvo", "tipo", "partida", "created_at")
+    list_filter = ("tipo",)
+    list_select_related = ("autor", "alvo", "partida__time_slot__court")
+
+
+@admin.register(SinalNivel)
+class SinalNivelAdmin(_RegistroDeAvaliacaoAdmin):
+    list_display = ("autor", "alvo", "direcao", "partida", "created_at")
+    list_filter = ("direcao",)
+    list_select_related = ("autor", "alvo", "partida__time_slot__court")

@@ -153,7 +153,10 @@ class ContaTest(TestCase):
                 "next": destino,
             },
         )
-        self.assertRedirects(resposta, destino)
+        # Depois do cadastro vem o questionário de perfil, que leva ao destino pedido.
+        self.assertRedirects(
+            resposta, f"{reverse('arena:configurar_perfil')}?next={destino}", fetch_redirect_response=False
+        )
         usuario = CustomUser.objects.get(username="bia.rocha")
         self.assertTrue(usuario.is_player)
         self.assertEqual(self.client.session["_auth_user_id"], str(usuario.pk))
@@ -170,4 +173,6 @@ class ContaTest(TestCase):
                 "next": "https://site-malicioso.example.com/",
             },
         )
-        self.assertRedirects(resposta, reverse("arena:vitrine"))
+        self.assertRedirects(
+            resposta, f"{reverse('arena:configurar_perfil')}?next={reverse('arena:vitrine')}", fetch_redirect_response=False
+        )

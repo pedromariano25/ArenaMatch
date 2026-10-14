@@ -30,6 +30,7 @@
     <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Portal do gestor">
       {% url 'gestor:dashboard' as url_item %}{% include "arena/_manager_nav.html" with url=url_item chave="dashboard" rotulo="Dashboard" nome_icone="painel" %}
       {% url 'gestor:agenda' as url_item %}{% include "arena/_manager_nav.html" with url=url_item chave="agenda" rotulo="Agenda" nome_icone="calendario" %}
+      {% url 'gestor:check_in' as url_item %}{% include "arena/_manager_nav.html" with url=url_item chave="check_in" rotulo="Check-in" nome_icone="check" %}
       {% url 'gestor:financeiro' as url_item %}{% include "arena/_manager_nav.html" with url=url_item chave="financeiro" rotulo="Financeiro" nome_icone="dinheiro" %}
       {% url 'gestor:configuracoes' as url_item %}{% include "arena/_manager_nav.html" with url=url_item chave="configuracoes" rotulo="Configurações" nome_icone="engrenagem" %}
 

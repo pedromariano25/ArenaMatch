@@ -13,7 +13,7 @@ from rest_framework.reverse import reverse
 from rest_framework.serializers import BaseSerializer
 from rest_framework.views import APIView
 
-from .. import checkout, razao
+from .. import checkout, jogadores, razao
 from ..models import Arena, Booking, CustomUser, OpenMatch
 from .permissions import IsJogador
 from .serializers import (
@@ -23,6 +23,7 @@ from .serializers import (
     LancamentoSerializer,
     PartidaDetalheSerializer,
     PartidaSerializer,
+    PerfilJogadorSerializer,
     PerfilSerializer,
 )
 
@@ -222,3 +223,32 @@ class PerfilView(generics.RetrieveAPIView):
 
     def get_object(self) -> CustomUser:
         return self.request.user
+
+
+class PerfilJogadorView(APIView):
+    """Perfil esportivo do jogador: GET consulta; PUT cria ou atualiza (com o questionário)."""
+
+    permission_classes = (IsAuthenticated, IsJogador)
+
+    def get(self, request: Request, format: str | None = None) -> Response:
+        perfil = jogadores.perfil_do(request.user)
+        if perfil is None:
+            return Response({"detail": "Perfil ainda não criado."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(PerfilJogadorSerializer(perfil).data)
+
+    def put(self, request: Request, format: str | None = None) -> Response:
+        serializer = PerfilJogadorSerializer(jogadores.perfil_do(request.user), data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dados = serializer.validated_data
+        nivel = None
+        if "autoavaliacao" in dados:
+            nivel = jogadores.calcular_nivel(dados["autoavaliacao"], dados["frequencia"], dados["experiencia"])
+        perfil = jogadores.salvar_perfil(
+            request.user,
+            posicao=dados["posicao"],
+            joga_no_gol=dados.get("joga_no_gol", False),
+            apelido=dados.get("apelido", ""),
+            regiao=dados.get("regiao", ""),
+            nivel_declarado=nivel,
+        )
+        return Response(PerfilJogadorSerializer(perfil).data)

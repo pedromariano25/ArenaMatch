@@ -45,6 +45,19 @@ fora do ambiente de desenvolvimento. Para usar um gateway real (Mercado Pago,
 Pagar.me, Asaas...), implemente a interface e aponte `ARENAMATCH_GATEWAY_PAGAMENTO`
 para a classe. As notificações (webhooks) chegam em `/pagamentos/webhook/`.
 
+## Jogadores, níveis e partidas equilibradas
+
+| Regra | Como funciona |
+| --- | --- |
+| Perfil | Antes da primeira partida, o jogador responde 3 perguntas (autoavaliação, frequência e experiência) e informa a posição. O nível (1 Iniciante a 5 Elite) sai das respostas |
+| Faixa da partida | Iniciante aceita níveis 1–2, Intermediário 2–4, Avançado 4–5 e Aberta a todos 1–5. As faixas se sobrepõem de propósito |
+| Trava de nível | Quem está fora da faixa não entra. Se ainda houver vaga, a trava cai 1h antes do prazo do mínimo de jogadores (padrão: 4h antes do jogo) |
+| Goleiro | Vaga própria e grátis, só para quem joga no gol (posição ou "topo jogar no gol"). Goleiro que falta sem avisar perde a vaga grátis por 14 dias |
+| Check-in | O comprovante tem um QR; a recepção lê pelo celular (Portal do Gestor → Check-in). Se a arena fez check-in no jogo, quem não apareceu leva falta |
+| Confiabilidade | Percentual de presença nos jogos com check-in, exibido no perfil |
+| Avaliação pós-jogo | Até 7 dias depois do jogo: nível da partida, elogios (só positivos) e, em partidas com faixa, sinal de que um colega joga acima/abaixo dela. Três colegas diferentes sinalizando a mesma coisa ajustam o nível em um ponto |
+| Times | O sistema sugere dois times de força parecida (nível e posição), com um goleiro em cada |
+
 ## Stack
 
 | Camada | Tecnologia |
@@ -163,7 +176,8 @@ paginadas (`?page=`), com 20 itens por página.
 | GET | `/api/arenas/` | Arenas e quadras |
 | POST | `/api/auth/cadastro/` | Cria uma conta de jogador e devolve o token |
 | POST | `/api/auth/token/` | Troca usuário e senha por um token |
-| GET | `/api/me/` | Perfil do usuário autenticado |
+| GET | `/api/me/` | Usuário autenticado (com o perfil de jogador) |
+| GET, PUT | `/api/perfil-jogador/` | Perfil esportivo; o PUT com o questionário define o nível |
 
 As regras de negócio (partida lotada, inscrição duplicada, partida já iniciada
 etc.) retornam **HTTP 400** com a mensagem em `non_field_errors`.
@@ -189,6 +203,7 @@ python manage.py test arena
 │   ├── agendador.py        # Monta o agendador (APScheduler) com as rotinas registradas
 │   ├── checkout.py         # Inscrição: reserva, pagamento, expiração, cancelamento, repasse, lista de espera
 │   ├── gestao.py           # Cálculos do portal: KPIs, grade da agenda, financeiro
+│   ├── jogadores.py        # Perfil e nível, elegibilidade, check-in, avaliações e times
 │   ├── models.py           # Entidades e regras de negócio
 │   ├── notificacoes.py     # E-mails aos jogadores (enviados depois do commit)
 │   ├── pagamentos.py       # Interface Gateway e o MockGateway de desenvolvimento

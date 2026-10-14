@@ -9,6 +9,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.db.models import QuerySet
 from django.utils import timezone
 
+from .jogadores import EXPERIENCIAS, FREQUENCIAS, calcular_nivel
 from .models import (
     Arena,
     Court,
@@ -16,7 +17,9 @@ from .models import (
     MetodoPagamento,
     NivelCompetitividade,
     OpenMatch,
+    PercepcaoNivel,
     Posicao,
+    PosicaoJogador,
     TipoPiso,
 )
 
@@ -36,7 +39,7 @@ class ConverterPartidaForm(forms.Form):
     nivel_competitividade = forms.ChoiceField(
         label="Nível",
         choices=NivelCompetitividade.choices,
-        initial=NivelCompetitividade.MISTO,
+        initial=NivelCompetitividade.ABERTA,
     )
     vagas_totais = forms.IntegerField(
         label="Vagas por partida",
@@ -163,7 +166,7 @@ class AbrirPartidaForm(forms.Form):
         self.fields["quadra"].queryset = quadras
 
     def clean_nivel_competitividade(self) -> str:
-        return self.cleaned_data["nivel_competitividade"] or NivelCompetitividade.MISTO
+        return self.cleaned_data["nivel_competitividade"] or NivelCompetitividade.ABERTA
 
 
 class ArenaConfigForm(forms.ModelForm):
@@ -231,10 +234,20 @@ class CheckoutForm(forms.Form):
         widget=forms.RadioSelect,
     )
 
-    def __init__(self, *args: Any, partida: OpenMatch, saldo: Decimal, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        partida: OpenMatch,
+        saldo: Decimal,
+        posicoes: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
+        posicoes = posicoes or [Posicao.LINHA, Posicao.GOLEIRO]
         if not partida.vagas_goleiro:
-            self.fields["posicao"].choices = [(Posicao.LINHA, Posicao.LINHA.label)]
+            posicoes = [posicao for posicao in posicoes if posicao != Posicao.GOLEIRO]
+        self.fields["posicao"].choices = [(p, Posicao(p).label) for p in posicoes]
+        self.fields["posicao"].initial = posicoes[0] if posicoes else Posicao.LINHA
         if saldo < partida.preco_final_jogador:
             self.fields["metodo"].choices = [
                 opcao for opcao in self.fields["metodo"].choices if opcao[0] != MetodoPagamento.CREDITO
@@ -247,3 +260,61 @@ class CheckoutForm(forms.Form):
         elif not dados.get("metodo"):
             self.add_error("metodo", "Escolha a forma de pagamento.")
         return dados
+
+
+# --- Perfil do jogador e avaliação pós-jogo ---------------------------------------
+
+
+class PerfilJogadorForm(forms.Form):
+    """Questionário do perfil: posição, disposição para o gol e nível (1 a 5)."""
+
+    apelido = forms.CharField(label="Apelido", max_length=30, required=False)
+    posicao = forms.ChoiceField(label="Posição", choices=PosicaoJogador.choices, widget=forms.RadioSelect)
+    joga_no_gol = forms.BooleanField(label="Também topo jogar no gol (a vaga de goleiro é grátis)", required=False)
+    regiao = forms.CharField(label="Bairro ou região", max_length=80, required=False)
+    autoavaliacao = forms.TypedChoiceField(
+        label="Como você se avalia?",
+        coerce=int,
+        widget=forms.RadioSelect,
+        choices=[
+            (1, "Estou começando ou voltando a jogar"),
+            (2, "Jogo por diversão, sem muita técnica"),
+            (3, "Jogo bem, tenho bom fundamento"),
+            (4, "Jogo muito bem, decido partidas"),
+            (5, "Jogo em alto nível"),
+        ],
+    )
+    frequencia = forms.ChoiceField(
+        label="Com que frequência você joga?",
+        choices=[(codigo, rotulo) for codigo, rotulo, _ in FREQUENCIAS],
+        widget=forms.RadioSelect,
+    )
+    experiencia = forms.ChoiceField(
+        label="Qual é a sua experiência?",
+        choices=[(codigo, rotulo) for codigo, rotulo, _ in EXPERIENCIAS],
+        widget=forms.RadioSelect,
+    )
+
+    QUESTIONARIO = ("autoavaliacao", "frequencia", "experiencia")
+
+    def __init__(self, *args: Any, nivel_travado: bool = False, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if nivel_travado:
+            # Nível ajustado pela comunidade: o jogador não o redefine sozinho.
+            for campo in self.QUESTIONARIO:
+                del self.fields[campo]
+
+    def nivel_declarado(self) -> int | None:
+        if "autoavaliacao" not in self.cleaned_data:
+            return None
+        return calcular_nivel(
+            self.cleaned_data["autoavaliacao"], self.cleaned_data["frequencia"], self.cleaned_data["experiencia"]
+        )
+
+
+class AvaliacaoPartidaForm(forms.Form):
+    """Percepção do nível do jogo; elogios e sinais vêm de campos por colega."""
+
+    percepcao = forms.ChoiceField(
+        label="Como foi o nível do jogo?", choices=PercepcaoNivel.choices, widget=forms.RadioSelect
+    )

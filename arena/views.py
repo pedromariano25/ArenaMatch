@@ -30,13 +30,15 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, FormView, ListView, TemplateView
 
-from . import checkout, gestao, partidas, razao
+from . import checkout, gestao, jogadores, partidas, razao
 from .forms import (
     AbrirPartidaForm,
     ArenaConfigForm,
+    AvaliacaoPartidaForm,
     CadastroJogadorForm,
     CheckoutForm,
     FiltroVitrineForm,
+    PerfilJogadorForm,
     QuadraForm,
 )
 from .models import (
@@ -45,13 +47,16 @@ from .models import (
     Booking,
     Court,
     MotivoCancelamento,
+    DirecaoNivel,
     NivelCompetitividade,
     OpenMatch,
+    OrigemNivel,
     Payment,
     Posicao,
     StatusInscricao,
     StatusPagamento,
     StatusPartida,
+    TipoElogio,
     TipoLancamento,
     WaitlistEntry,
 )
@@ -109,9 +114,13 @@ class PartidaDetalheView(DetailView):
         usuario = self.request.user
         minha = None
         na_lista = False
+        motivo_linha = motivo_goleiro = None
         if usuario.is_authenticated:
             minha = partida.inscricoes.filter(player=usuario, status__in=STATUS_INSCRICAO_ATIVA).first()
             na_lista = WaitlistEntry.objects.filter(partida=partida, jogador=usuario).exists()
+            if usuario.is_player:
+                motivo_linha = jogadores.motivo_inelegivel(partida, usuario, Posicao.LINHA)
+                motivo_goleiro = jogadores.motivo_inelegivel(partida, usuario, Posicao.GOLEIRO)
         livres_linha = partida.vagas_livres(Posicao.LINHA)
         livres_goleiro = partida.vagas_livres(Posicao.GOLEIRO)
         contexto.update(
@@ -123,6 +132,9 @@ class PartidaDetalheView(DetailView):
             vagas_livres_goleiro=range(livres_goleiro),
             minha_inscricao=minha,
             na_lista_de_espera=na_lista,
+            # Mensagem só quando nenhuma das vagas serve para o jogador.
+            motivo_inelegivel=motivo_linha if motivo_linha and (motivo_goleiro or not partida.vagas_goleiro) else None,
+            perfil_incompleto=usuario.is_authenticated and usuario.is_player and jogadores.perfil_do(usuario) is None,
         )
         return contexto
 
@@ -170,8 +182,21 @@ class CheckoutView(LoginRequiredMixin, View):
     def _partida(self, pk: str) -> OpenMatch:
         return get_object_or_404(OpenMatch.objects.com_relacionados(), pk=pk)
 
+    def _posicoes(self, partida: OpenMatch) -> list[str]:
+        """Vagas (linha, goleiro) que o jogador pode pegar nesta partida."""
+        return [
+            posicao
+            for posicao in (Posicao.LINHA, Posicao.GOLEIRO)
+            if jogadores.motivo_inelegivel(partida, self.request.user, posicao) is None
+        ]
+
     def _formulario(self, partida: OpenMatch, dados: Any = None) -> CheckoutForm:
-        return CheckoutForm(dados, partida=partida, saldo=razao.saldo_do_jogador(self.request.user))
+        return CheckoutForm(
+            dados,
+            partida=partida,
+            saldo=razao.saldo_do_jogador(self.request.user),
+            posicoes=self._posicoes(partida),
+        )
 
     def _exibir(self, partida: OpenMatch, form: CheckoutForm) -> HttpResponse:
         return render(
@@ -200,6 +225,14 @@ class CheckoutView(LoginRequiredMixin, View):
                 return redirect("arena:inscricao", pk=ativa.pk)
         if not partida.aceita_inscricoes:
             messages.warning(self.request, "Esta partida não está aceitando novas inscrições.")
+            return redirect(partida)
+        if jogadores.perfil_do(usuario) is None:
+            messages.info(self.request, "Antes da primeira partida, conte rapidinho como você joga.")
+            destino = reverse("arena:checkout", args=[partida.pk])
+            return redirect(f"{reverse('arena:configurar_perfil')}?next={destino}")
+        posicoes = self._posicoes(partida)
+        if not posicoes or (posicoes == [Posicao.GOLEIRO] and not partida.vagas_goleiro):
+            messages.warning(self.request, jogadores.motivo_inelegivel(partida, usuario, Posicao.LINHA))
             return redirect(partida)
         return None
 
@@ -248,7 +281,7 @@ class SimularPagamentoView(LoginRequiredMixin, View):
 
 
 class InscricaoView(LoginRequiredMixin, DetailView):
-    """Comprovante da inscrição (visível apenas para o próprio jogador)."""
+    """Comprovante da inscrição (visível apenas para o próprio jogador), com o QR do check-in."""
 
     template_name = "arena/inscricao.html"
     context_object_name = "inscricao"
@@ -257,6 +290,20 @@ class InscricaoView(LoginRequiredMixin, DetailView):
         return Booking.objects.filter(player=self.request.user).select_related(
             "open_match__time_slot__court__arena"
         )
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        inscricao = self.object
+        partida = inscricao.open_match
+        confirmada = inscricao.status == StatusInscricao.CONFIRMADA
+        contexto.update(
+            url_check_in=self.request.build_absolute_uri(
+                reverse("gestor:check_in_inscricao", args=[inscricao.pk])
+            ),
+            times=jogadores.montar_times(partida) if confirmada and partida.jogo_confirmado else None,
+            pode_avaliar=jogadores.pode_avaliar(partida, self.request.user),
+        )
+        return contexto
 
 
 class CancelarInscricaoView(LoginRequiredMixin, View):
@@ -327,6 +374,8 @@ class MinhasInscricoesView(LoginRequiredMixin, TemplateView):
         proximas, anteriores = [], []
         for inscricao in inscricoes:
             (anteriores if inscricao.open_match.time_slot.ja_comecou else proximas).append(inscricao)
+        for inscricao in anteriores:
+            inscricao.pode_avaliar = jogadores.pode_avaliar(inscricao.open_match, self.request.user)
         contexto.update(
             proximas=proximas,
             anteriores=anteriores[::-1],
@@ -387,7 +436,129 @@ class CadastroView(FormView):
 
     def get_success_url(self) -> str:
         destino = self.request.POST.get("next") or self.request.GET.get("next")
-        return _destino_seguro(self.request, destino, reverse("arena:vitrine"))
+        destino = _destino_seguro(self.request, destino, reverse("arena:vitrine"))
+        return f"{reverse('arena:configurar_perfil')}?next={destino}"
+
+
+class ConfigurarPerfilView(LoginRequiredMixin, FormView):
+    """Questionário do perfil: posição, gol e nível (calculado a partir das respostas)."""
+
+    template_name = "arena/perfil_configurar.html"
+    form_class = PerfilJogadorForm
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if request.user.is_authenticated and not request.user.is_player:
+            messages.warning(request, "Perfis de jogador são só para contas de jogador.")
+            return redirect("arena:vitrine")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self) -> dict[str, Any]:
+        kwargs = super().get_form_kwargs()
+        self.perfil = jogadores.perfil_do(self.request.user)
+        kwargs["nivel_travado"] = self.perfil is not None and self.perfil.nivel_origem == OrigemNivel.AJUSTADO
+        if self.perfil is not None:
+            kwargs["initial"] = {
+                "apelido": self.perfil.apelido,
+                "posicao": self.perfil.posicao,
+                "joga_no_gol": self.perfil.joga_no_gol,
+                "regiao": self.perfil.regiao,
+            }
+        return kwargs
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto.update(perfil=self.perfil, next=self.request.GET.get("next") or self.request.POST.get("next", ""))
+        return contexto
+
+    def form_valid(self, form: PerfilJogadorForm) -> HttpResponse:
+        dados = form.cleaned_data
+        perfil = jogadores.salvar_perfil(
+            self.request.user,
+            posicao=dados["posicao"],
+            joga_no_gol=dados["joga_no_gol"],
+            apelido=dados["apelido"],
+            regiao=dados["regiao"],
+            nivel_declarado=form.nivel_declarado(),
+        )
+        messages.success(self.request, f"Perfil salvo. Seu nível: {perfil.nivel} · {perfil.get_nivel_display()}.")
+        destino = self.request.POST.get("next") or self.request.GET.get("next")
+        return redirect(_destino_seguro(self.request, destino, reverse("arena:perfil")))
+
+
+class PerfilView(LoginRequiredMixin, TemplateView):
+    """Perfil do jogador: nível, posição, partidas jogadas, confiabilidade e elogios."""
+
+    template_name = "arena/perfil.html"
+
+    def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if request.user.is_player and jogadores.perfil_do(request.user) is None:
+            return redirect("arena:configurar_perfil")
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto.update(
+            perfil=jogadores.perfil_do(self.request.user),
+            estatisticas=jogadores.estatisticas(self.request.user),
+            saldo=razao.saldo_do_jogador(self.request.user),
+        )
+        return contexto
+
+
+class AvaliarPartidaView(LoginRequiredMixin, View):
+    """Depois do jogo: nível da partida, elogios e sinais de nível dos colegas."""
+
+    template_name = "arena/avaliar_partida.html"
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        self.partida = get_object_or_404(OpenMatch.objects.com_relacionados(), pk=kwargs["pk"])
+        if not jogadores.pode_avaliar(self.partida, request.user):
+            messages.info(request, "Esta partida não está disponível para avaliação.")
+            return redirect("arena:minhas_inscricoes")
+        return super().dispatch(request, *args, **kwargs)
+
+    def handle_no_permission(self) -> HttpResponse:
+        return redirect(f"{reverse('arena:entrar')}?next={self.request.get_full_path()}")
+
+    def get(self, request: HttpRequest, pk: str) -> HttpResponse:
+        return self._exibir(AvaliacaoPartidaForm())
+
+    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
+        form = AvaliacaoPartidaForm(request.POST)
+        if not form.is_valid():
+            return self._exibir(form)
+        colegas = jogadores.colegas_de_partida(self.partida, request.user)
+        elogios = {str(c.player_id): request.POST.get(f"elogio_{c.player_id}", "") for c in colegas}
+        sinais = {str(c.player_id): request.POST.get(f"sinal_{c.player_id}", "") for c in colegas}
+        try:
+            jogadores.registrar_avaliacao(
+                self.partida,
+                request.user,
+                form.cleaned_data["percepcao"],
+                {alvo: tipo for alvo, tipo in elogios.items() if tipo},
+                {alvo: direcao for alvo, direcao in sinais.items() if direcao},
+            )
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            messages.success(request, "Valeu pela avaliação! Ela ajuda a montar jogos mais equilibrados.")
+        return redirect("arena:minhas_inscricoes")
+
+    def _exibir(self, form: AvaliacaoPartidaForm) -> HttpResponse:
+        return render(
+            self.request,
+            self.template_name,
+            {
+                "partida": self.partida,
+                "form": form,
+                "colegas": jogadores.colegas_de_partida(self.partida, self.request.user),
+                "tipos_elogio": TipoElogio.choices,
+                "direcoes": DirecaoNivel.choices,
+                "com_faixa": self.partida.nivel_competitividade != NivelCompetitividade.ABERTA,
+            },
+        )
 
 
 # =============================================================================
@@ -555,6 +726,76 @@ class GestorCancelarPartidaView(GestorRequiredMixin, View):
                 f"Partida cancelada. {reembolsados} jogador(es) reembolsado(s) automaticamente.",
             )
         return redirect(_destino_seguro(request, request.POST.get("voltar"), reverse("gestor:dashboard")))
+
+
+class GestorCheckInView(GestorRequiredMixin, TemplateView):
+    """Recepção: partidas de hoje com a lista de presença e os times sugeridos."""
+
+    template_name = "arena/manager_check_in.html"
+    secao = "check_in"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        hoje = timezone.localdate()
+        partidas_de_hoje = (
+            OpenMatch.objects.filter(time_slot__court__arena=self.arena, time_slot__data=hoje)
+            .exclude(status=StatusPartida.CANCELADA)
+            .com_relacionados()
+            .order_by("time_slot__hora_inicio")
+        )
+        contexto["partidas"] = [
+            {
+                "partida": partida,
+                "inscricoes": partida.inscricoes.filter(status=StatusInscricao.CONFIRMADA)
+                .select_related("player__perfil")
+                .order_by("posicao", "player__first_name"),
+                "times": jogadores.montar_times(partida),
+            }
+            for partida in partidas_de_hoje
+        ]
+        return contexto
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        inscricao = get_object_or_404(
+            Booking, pk=request.POST.get("inscricao"), open_match__time_slot__court__arena__in=self.arenas
+        )
+        try:
+            jogadores.registrar_check_in(inscricao)
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            messages.success(request, f"Check-in de {inscricao.player.nome_publico} feito.")
+        return redirect("gestor:check_in")
+
+
+class GestorCheckInInscricaoView(GestorRequiredMixin, TemplateView):
+    """Destino do QR do comprovante: mostra o jogador e confirma a presença."""
+
+    template_name = "arena/manager_check_in_inscricao.html"
+    secao = "check_in"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto["inscricao"] = self._inscricao()
+        contexto["pode_fazer_check_in"] = jogadores.pode_fazer_check_in(contexto["inscricao"])
+        return contexto
+
+    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
+        inscricao = self._inscricao()
+        try:
+            jogadores.registrar_check_in(inscricao)
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            messages.success(request, f"Check-in de {inscricao.player.nome_publico} feito. Bom jogo!")
+        return redirect("gestor:check_in_inscricao", pk=pk)
+
+    def _inscricao(self) -> Booking:
+        return get_object_or_404(
+            Booking.objects.select_related("player__perfil", "open_match__time_slot__court"),
+            pk=self.kwargs["pk"],
+            open_match__time_slot__court__arena__in=self.arenas,
+        )
 
 
 class GestorFinanceiroView(GestorRequiredMixin, TemplateView):
