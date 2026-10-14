@@ -10,6 +10,7 @@ from django.forms import modelform_factory
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
+from arena import razao
 from arena.formatacao import formatar_brl, formatar_cnpj, formatar_cpf
 from arena.models import (
     MEIA_NOITE,
@@ -19,10 +20,12 @@ from arena.models import (
     CustomUser,
     NivelCompetitividade,
     OpenMatch,
+    Posicao,
     StatusHorario,
-    StatusPagamento,
+    StatusInscricao,
     StatusPartida,
     TimeSlot,
+    TipoLancamento,
 )
 from arena.validators import validar_cnpj, validar_cpf
 
@@ -34,6 +37,8 @@ from .fabricas import (
     criar_jogador,
     criar_partida,
     criar_quadra,
+    inscrever,
+    mover_partida,
 )
 
 
@@ -213,46 +218,65 @@ class BookingTest(TestCase):
         self.partida.refresh_from_db()
         return self.partida.vagas_disponiveis, self.partida.status
 
-    def inscrever(self, jogador, **dados):
-        return Booking.objects.create(open_match=self.partida, player=jogador, **dados)
-
-    def test_fluxo_completo_de_vagas(self):
+    def test_reserva_ocupa_a_vaga_ate_vencer(self):
         j1, j2, j3 = self.jogadores
-        b1 = self.inscrever(j1)
+        reserva = Booking.objects.create(open_match=self.partida, player=j1)
+        self.assertEqual(reserva.status, StatusInscricao.AGUARDANDO_PAGAMENTO)
         self.assertEqual(self.estado(), (1, StatusPartida.ABERTA))
-        with self.assertRaises(ValidationError) as ctx:
-            self.inscrever(j1)
-        self.assertIn("inscrição ativa", str(ctx.exception))
-        b2 = self.inscrever(j2, status_pagamento=StatusPagamento.PAGO)
+        inscrever(self.partida, j2)
         self.assertEqual(self.estado(), (0, StatusPartida.LOTADA))
-        with self.assertRaises(ValidationError) as ctx:
-            self.inscrever(j3)
-        self.assertIn("lotada", str(ctx.exception))
-        b1.status_pagamento = StatusPagamento.REEMBOLSADO
-        b1.save()
-        self.assertEqual(self.estado(), (1, StatusPartida.ABERTA))
-        self.inscrever(j1)  # nova inscrição após o reembolso
+        with self.assertRaisesMessage(ValidationError, "lotada"):
+            inscrever(self.partida, j3)
+        Booking.objects.filter(pk=reserva.pk).update(reservada_ate=timezone.now() - timedelta(minutes=1))
+        inscrever(self.partida, j3)  # a reserva vencida não conta mais
         self.assertEqual(self.estado(), (0, StatusPartida.LOTADA))
-        b1.status_pagamento = StatusPagamento.PENDENTE  # reativar o reembolsado: lotada
-        with self.assertRaises(ValidationError):
-            b1.save()
-        b2.delete()
-        self.assertEqual(self.estado(), (1, StatusPartida.ABERTA))
-        Booking.objects.filter(open_match=self.partida).delete()  # exclusão em massa
-        self.assertEqual(self.estado(), (2, StatusPartida.ABERTA))
 
-    def test_marcar_pago_em_partida_lotada(self):
-        j1, j2, _ = self.jogadores
-        b1 = self.inscrever(j1)
-        self.inscrever(j2)
-        b1.status_pagamento = StatusPagamento.PAGO
-        b1.save()  # não é nova ocupação: permitido mesmo com a partida lotada
-        self.assertEqual(self.estado(), (0, StatusPartida.LOTADA))
+    def test_uma_inscricao_ativa_por_jogador(self):
+        j1 = self.jogadores[0]
+        inscricao = inscrever(self.partida, j1)
+        with self.assertRaisesMessage(ValidationError, "inscrição ativa"):
+            inscrever(self.partida, j1)
+        inscricao.status = StatusInscricao.CANCELADA
+        inscricao.save()
+        self.assertEqual(self.estado(), (2, StatusPartida.ABERTA))
+        inscrever(self.partida, j1)  # nova inscrição depois do cancelamento
+
+    def test_transicoes_de_status(self):
+        inscricao = inscrever(self.partida, self.jogadores[0])
+        inscricao.status = StatusInscricao.AGUARDANDO_PAGAMENTO
+        with self.assertRaisesMessage(ValidationError, "Não é possível passar"):
+            inscricao.save()
+        inscricao.status = StatusInscricao.REEMBOLSADA
+        inscricao.save()
+        inscricao.status = StatusInscricao.CONFIRMADA
+        with self.assertRaises(ValidationError):
+            inscricao.save()
+
+    def test_expirada_so_volta_se_houver_vaga(self):
+        j1, j2, j3 = self.jogadores
+        reserva = Booking.objects.create(open_match=self.partida, player=j1)
+        reserva.status = StatusInscricao.EXPIRADA
+        reserva.save()
+        inscrever(self.partida, j2)
+        inscrever(self.partida, j3)
+        reserva.status = StatusInscricao.CONFIRMADA
+        with self.assertRaisesMessage(ValidationError, "lotada"):
+            reserva.save()
+
+    def test_vagas_de_goleiro_sao_separadas(self):
+        partida = criar_partida(vagas=3, vagas_goleiro=1)
+        inscrever(partida, posicao=Posicao.GOLEIRO)
+        with self.assertRaisesMessage(ValidationError, "goleiro"):
+            inscrever(partida, posicao=Posicao.GOLEIRO)
+        inscrever(partida)
+        inscrever(partida)
+        partida.refresh_from_db()
+        self.assertEqual(partida.status, StatusPartida.LOTADA)
 
     def test_vagas_travadas_apos_inscricao(self):
         j1, j2, _ = self.jogadores
-        self.inscrever(j1)
-        self.inscrever(j2)
+        inscrever(self.partida, j1)
+        inscrever(self.partida, j2)
         for vagas in (1, 5):
             self.partida.refresh_from_db()
             self.partida.vagas_totais = vagas
@@ -263,60 +287,66 @@ class BookingTest(TestCase):
 
     def test_jogador_sem_flag(self):
         with self.assertRaises(ValidationError) as ctx:
-            self.inscrever(criar_gestor())
+            inscrever(self.partida, criar_gestor())
         self.assertIn("player", ctx.exception.message_dict)
 
     def test_partida_cancelada(self):
-        j1, j2, _ = self.jogadores
-        inscricao = self.inscrever(j1, status_pagamento=StatusPagamento.PAGO)
+        inscrever(self.partida, self.jogadores[0])
         self.partida.refresh_from_db()
         self.partida.status = StatusPartida.CANCELADA
         self.partida.save()
-        with self.assertRaises(ValidationError) as ctx:
-            self.inscrever(j2)
-        self.assertIn("cancelada", str(ctx.exception))
-        inscricao.status_pagamento = StatusPagamento.REEMBOLSADO
-        inscricao.save()  # reembolso em partida cancelada é permitido
-        self.assertEqual(self.estado(), (2, StatusPartida.CANCELADA))
+        with self.assertRaisesMessage(ValidationError, "cancelada"):
+            inscrever(self.partida, self.jogadores[1])
 
     def test_partida_ja_comecou(self):
         ontem = timezone.localdate() - timedelta(days=1)
         TimeSlot.objects.filter(pk=self.partida.time_slot_id).update(data=ontem)
-        with self.assertRaises(ValidationError) as ctx:
-            self.inscrever(self.jogadores[0])
-        self.assertIn("já começou", str(ctx.exception))
+        with self.assertRaisesMessage(ValidationError, "já começou"):
+            inscrever(self.partida, self.jogadores[0])
 
     def test_trocar_partida_ou_jogador(self):
         j1, j2, _ = self.jogadores
         outra = criar_partida(vagas=5)
-        inscricao = self.inscrever(j1)
+        inscricao = inscrever(self.partida, j1)
         inscricao.open_match = outra
-        with self.assertRaises(ValidationError) as ctx:
+        with self.assertRaisesMessage(ValidationError, "trocar a partida"):
             inscricao.save()
-        self.assertIn("trocar a partida", str(ctx.exception))
         inscricao = Booking.objects.get(pk=inscricao.pk)
         inscricao.player = j2
         with self.assertRaises(ValidationError):
             inscricao.save()
         self.assertEqual(self.estado(), (1, StatusPartida.ABERTA))
 
-    def test_cancelar(self):
+    def test_prazos_de_cancelamento_e_repasse(self):
         j1, j2, _ = self.jogadores
-        pendente = self.inscrever(j1)
-        paga = self.inscrever(j2, status_pagamento=StatusPagamento.PAGO)
-        self.assertTrue(pendente.pode_cancelar)
-        pendente.cancelar()
-        self.assertEqual(self.estado(), (1, StatusPartida.ABERTA))
+        paga = inscrever(self.partida, j1)
+        reserva = Booking.objects.create(open_match=self.partida, player=j2)
+        mover_partida(self.partida, timezone.now() + timedelta(days=2))
+        paga = Booking.objects.get(pk=paga.pk)
+        self.assertTrue(paga.pode_cancelar)
+        self.assertFalse(paga.pode_repassar)
+        mover_partida(self.partida, timezone.now() + timedelta(hours=5))
+        paga = Booking.objects.get(pk=paga.pk)
         self.assertFalse(paga.pode_cancelar)
-        with self.assertRaises(ValidationError):
-            paga.cancelar()
+        self.assertTrue(paga.pode_repassar)
+        self.assertTrue(Booking.objects.get(pk=reserva.pk).pode_cancelar)
 
     def test_protect_preserva_historico(self):
-        self.inscrever(self.jogadores[0])
+        inscrever(self.partida, self.jogadores[0])
         with self.assertRaises(ProtectedError):
             self.partida.delete()
         with self.assertRaises(ProtectedError):
             self.partida.time_slot.delete()
+
+    def test_lancamento_do_razao_e_imutavel(self):
+        lancamento = razao.lancar(
+            razao.carteira_da_plataforma(), TipoLancamento.TAXA_SERVICO, Decimal("1.00"), "teste"
+        )
+        lancamento.valor = Decimal("2.00")
+        with self.assertRaises(ValidationError):
+            lancamento.save()
+        with self.assertRaises(ValidationError):
+            lancamento.delete()
 
 
 class FormulariosDeModeloTest(TestCase):
@@ -327,7 +357,9 @@ class FormulariosDeModeloTest(TestCase):
             data={
                 "open_match": partida.pk,
                 "player": jogador.pk,
-                "status_pagamento": "pendente",
+                "posicao": "linha",
+                "status": "confirmada",
+                "metodo_pagamento": "pix",
                 "data_inscricao": timezone.localtime().strftime("%Y-%m-%d %H:%M:%S"),
             }
         )

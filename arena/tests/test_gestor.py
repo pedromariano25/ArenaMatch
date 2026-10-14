@@ -7,20 +7,30 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from arena import gestao
+from arena import gestao, partidas, razao
 from arena.models import (
-    Booking,
     Court,
     CustomUser,
+    MetodoPagamento,
     OpenMatch,
     StatusHorario,
-    StatusPagamento,
+    StatusInscricao,
     StatusPartida,
     TimeSlot,
+    TipoLancamento,
     TipoReserva,
 )
 
-from .fabricas import amanha, criar_arena, criar_gestor, criar_horario, criar_jogador, criar_partida, criar_quadra
+from .fabricas import (
+    amanha,
+    comprar,
+    criar_arena,
+    criar_gestor,
+    criar_horario,
+    criar_jogador,
+    criar_partida,
+    criar_quadra,
+)
 
 
 class AcessoPortalTest(TestCase):
@@ -79,22 +89,36 @@ class DashboardTest(PortalBase):
             horario=criar_horario(self.quadra, time(19), time(20), status=StatusHorario.OCIOSO),
             valor_total_aluguel=Decimal("120.00"),
         )
-        Booking.objects.create(open_match=partida, player=criar_jogador(), status_pagamento=StatusPagamento.PAGO)
-        Booking.objects.create(open_match=partida, player=criar_jogador())
+        comprar(partida)
+        comprar(partida, pagar=False)  # Pix ainda pendente
 
         resposta = self.client.get(reverse("gestor:dashboard"))
         self.assertEqual(resposta.status_code, 200)
         indicadores = resposta.context["indicadores"]
         if partida.time_slot.data.month == timezone.localdate().month:
-            self.assertEqual(indicadores.liquido_mes, Decimal("30.00"))
-        self.assertEqual(indicadores.liquido_pendente, Decimal("30.00"))
+            self.assertEqual(indicadores.vendido_mes, Decimal("30.00"))
+            self.assertEqual(indicadores.vagas_vendidas_mes, 1)
+        self.assertEqual((indicadores.a_liberar, indicadores.disponivel), (Decimal("30.00"), Decimal("0")))
         self.assertEqual(indicadores.horarios_mensalistas, 1)
         self.assertGreater(indicadores.horarios_vagos, 0)
         self.assertEqual(indicadores.aluguel_por_horario, Decimal("120.00"))
 
         resumo = resposta.context["proximas"][0]
-        self.assertEqual((resumo.liquido_pago, resumo.liquido_pendente), (Decimal("30.00"), Decimal("30.00")))
+        self.assertEqual((resumo.garantido, resumo.em_pagamento), (Decimal("30.00"), Decimal("30.00")))
         self.assertContains(resposta, "Próximas partidas abertas")
+
+    def test_cancelar_partida_reembolsa_os_jogadores(self):
+        partida = criar_partida(vagas=4, horario=criar_horario(self.quadra, status=StatusHorario.OCIOSO))
+        inscricao = comprar(partida)
+        resposta = self.client.post(reverse("gestor:cancelar_partida", args=[partida.pk]), follow=True)
+        self.assertContains(resposta, "1 jogador(es) reembolsado(s)")
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.status, StatusInscricao.REEMBOLSADA)
+
+    def test_nao_cancela_partida_de_outra_arena(self):
+        alheia = criar_partida(horario=criar_horario(self.quadra_alheia, status=StatusHorario.OCIOSO))
+        resposta = self.client.post(reverse("gestor:cancelar_partida", args=[alheia.pk]))
+        self.assertEqual(resposta.status_code, 404)
 
 
 class AgendaTest(PortalBase):
@@ -137,9 +161,10 @@ class AgendaTest(PortalBase):
         partida = OpenMatch.objects.get()
         self.assertEqual(partida.time_slot.status, StatusHorario.OCIOSO)
         self.assertEqual(
-            (partida.vagas_totais, partida.valor_total_aluguel, partida.status),
-            (10, Decimal("275.00"), StatusPartida.ABERTA),
+            (partida.vagas_totais, partida.vagas_goleiro, partida.valor_total_aluguel, partida.status),
+            (10, 2, Decimal("275.00"), StatusPartida.ABERTA),
         )
+        self.assertEqual(partida.preco_final_jogador, Decimal("39.53"))  # 275 / 8 = 34,37 + 15%
 
     def test_reabre_partida_cancelada_e_recusa_horario_reservado(self):
         horario = criar_horario(self.quadra, time(20), time(21), status=StatusHorario.OCIOSO)
@@ -179,36 +204,24 @@ class FinanceiroTest(PortalBase):
     def setUp(self):
         super().setUp()
         self.partida = criar_partida(vagas=3, horario=criar_horario(self.quadra, status=StatusHorario.OCIOSO))
-        self.inscricao = Booking.objects.create(open_match=self.partida, player=criar_jogador())
+        comprar(self.partida, metodo=MetodoPagamento.CARTAO)
 
-    def test_lista_apenas_inscricoes_da_arena(self):
+    def test_extrato_e_saldo_da_carteira(self):
         alheia = criar_partida(horario=criar_horario(self.quadra_alheia, status=StatusHorario.OCIOSO))
-        Booking.objects.create(open_match=alheia, player=criar_jogador())
+        comprar(alheia)
         resposta = self.client.get(reverse("gestor:financeiro"))
-        self.assertEqual(list(resposta.context["pagina"].object_list), [self.inscricao])
-        filtrada = self.client.get(reverse("gestor:financeiro"), {"status": "pago"})
+        lancamentos = list(resposta.context["pagina"].object_list)
+        self.assertEqual([(l.tipo, l.valor) for l in lancamentos], [(TipoLancamento.VENDA_VAGA, Decimal("25.00"))])
+        self.assertEqual(resposta.context["resumo"]["a_liberar"], Decimal("25.00"))
+        self.assertNotContains(resposta, "Marcar como pago")
+        filtrada = self.client.get(reverse("gestor:financeiro"), {"tipo": "repasse"})
         self.assertEqual(list(filtrada.context["pagina"].object_list), [])
 
-    def test_marcar_pago_e_reembolsar(self):
-        url = reverse("gestor:pagamento", args=[self.inscricao.pk])
-        self.client.post(url, {"status": "pago"})
-        self.inscricao.refresh_from_db()
-        self.assertEqual(self.inscricao.status_pagamento, StatusPagamento.PAGO)
-
-        self.client.post(url, {"status": "reembolsado"})
-        self.inscricao.refresh_from_db()
-        self.partida.refresh_from_db()
-        self.assertEqual(self.inscricao.status_pagamento, StatusPagamento.REEMBOLSADO)
-        self.assertEqual(self.partida.vagas_disponiveis, 3)
-
-    def test_transicao_invalida_e_inscricao_alheia(self):
-        resposta = self.client.post(
-            reverse("gestor:pagamento", args=[self.inscricao.pk]), {"status": "reembolsado"}, follow=True
-        )
-        self.assertContains(resposta, "Não é possível mudar o pagamento")
-        self.client.force_login(self.outro_gestor)
-        resposta = self.client.post(reverse("gestor:pagamento", args=[self.inscricao.pk]), {"status": "pago"})
-        self.assertEqual(resposta.status_code, 404)
+    def test_repasses_aparecem_no_historico(self):
+        partidas.finalizar_partidas(self.partida.time_slot.fim + timedelta(minutes=1))
+        razao.gerar_repasses(self.partida.time_slot.fim + timedelta(days=1, minutes=1))
+        resposta = self.client.get(reverse("gestor:financeiro"))
+        self.assertEqual([r.valor for r in resposta.context["repasses"]], [Decimal("25.00")])
 
 
 class ConfiguracoesTest(PortalBase):
@@ -224,10 +237,14 @@ class ConfiguracoesTest(PortalBase):
                 "endereco_completo": "Rua Nova, 10 – Centro, São Paulo – SP",
                 "hora_abertura": "17:00",
                 "hora_fechamento": "23:00",
+                "quorum_percentual": "60",
+                "horas_prazo_quorum": "4",
             },
         )
         self.arena.refresh_from_db()
-        self.assertEqual((self.arena.nome, self.arena.hora_abertura), ("Arena Renovada", time(17)))
+        self.assertEqual(
+            (self.arena.nome, self.arena.hora_abertura, self.arena.quorum_percentual), ("Arena Renovada", time(17), 60)
+        )
 
         self.client.post(url, {"adicionar_quadra": "1", "nome_ou_numero": "Quadra Nova", "tipo_piso": "areia", "capacidade_padrao": "10"})
         self.assertTrue(Court.objects.filter(arena=self.arena, nome_ou_numero="Quadra Nova").exists())

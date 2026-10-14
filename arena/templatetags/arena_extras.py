@@ -30,10 +30,12 @@ _CLASSES_NIVEL = {
     "avancado": "bg-rose-50 text-rose-700 ring-rose-200",
 }
 
-_CLASSES_PAGAMENTO = {
-    "pago": "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    "pendente": "bg-amber-50 text-amber-700 ring-amber-200",
-    "reembolsado": "bg-slate-100 text-slate-600 ring-slate-200",
+_CLASSES_INSCRICAO = {
+    "confirmada": "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    "aguardando_pagamento": "bg-amber-50 text-amber-700 ring-amber-200",
+    "reembolsada": "bg-sky-50 text-sky-700 ring-sky-200",
+    "cancelada": "bg-slate-100 text-slate-600 ring-slate-200",
+    "expirada": "bg-slate-100 text-slate-600 ring-slate-200",
 }
 
 # Marca (ponto) que identifica o tipo de piso ao lado do rótulo.
@@ -264,8 +266,8 @@ def classes_nivel(nivel: str) -> str:
 
 
 @register.filter
-def classes_pagamento(status: str) -> str:
-    return _CLASSES_PAGAMENTO.get(status, _CLASSES_PAGAMENTO["reembolsado"])
+def classes_inscricao(status: str) -> str:
+    return _CLASSES_INSCRICAO.get(status, _CLASSES_INSCRICAO["cancelada"])
 
 
 @register.filter

@@ -7,38 +7,55 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db.models import QuerySet, Sum
 from django.forms import Form
-from django.http import HttpRequest, HttpResponse
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    HttpResponseNotFound,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.decorators import method_decorator
 from django.utils.formats import date_format
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, FormView, ListView, TemplateView
 
-from . import gestao
+from . import checkout, gestao, partidas, razao
 from .forms import (
     AbrirPartidaForm,
     ArenaConfigForm,
     CadastroJogadorForm,
+    CheckoutForm,
     FiltroVitrineForm,
     QuadraForm,
 )
 from .models import (
-    STATUS_OCUPA_VAGA,
+    STATUS_INSCRICAO_ATIVA,
     Arena,
     Booking,
     Court,
+    MotivoCancelamento,
     NivelCompetitividade,
     OpenMatch,
+    Payment,
+    Posicao,
+    StatusInscricao,
     StatusPagamento,
     StatusPartida,
+    TipoLancamento,
+    WaitlistEntry,
 )
+from .pagamentos import obter_gateway
 
 
 def _destino_seguro(request: HttpRequest, destino: str | None, padrao: str) -> str:
@@ -48,6 +65,10 @@ def _destino_seguro(request: HttpRequest, destino: str | None, padrao: str) -> s
     ):
         return destino
     return padrao
+
+
+def _mensagens(erro: ValidationError) -> str:
+    return " ".join(erro.messages)
 
 
 class VitrineView(ListView):
@@ -73,33 +94,41 @@ class VitrineView(ListView):
 
 
 class PartidaDetalheView(DetailView):
-    """Detalhes da partida: local, jogadores confirmados e chamada para reservar."""
+    """Detalhes da partida: local, jogadores confirmados e chamada para garantir a vaga."""
 
     template_name = "arena/partida_detalhe.html"
     context_object_name = "partida"
-    queryset = OpenMatch.objects.com_relacionados()
+    queryset = OpenMatch.objects.com_relacionados().com_confirmados()
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         contexto = super().get_context_data(**kwargs)
-        inscricoes = list(
-            self.object.inscricoes.filter(status_pagamento__in=STATUS_OCUPA_VAGA)
-            .select_related("player")
-            .order_by("data_inscricao")
+        partida = self.object
+        confirmadas = list(
+            partida.inscricoes.confirmadas().select_related("player").order_by("confirmada_em")
         )
         usuario = self.request.user
+        minha = None
+        na_lista = False
+        if usuario.is_authenticated:
+            minha = partida.inscricoes.filter(player=usuario, status__in=STATUS_INSCRICAO_ATIVA).first()
+            na_lista = WaitlistEntry.objects.filter(partida=partida, jogador=usuario).exists()
+        livres_linha = partida.vagas_livres(Posicao.LINHA)
+        livres_goleiro = partida.vagas_livres(Posicao.GOLEIRO)
         contexto.update(
-            jogadores=[inscricao.player for inscricao in inscricoes],
-            minha_inscricao=next(
-                (i for i in inscricoes if usuario.is_authenticated and i.player_id == usuario.pk),
-                None,
-            ),
-            vagas_livres=range(min(self.object.vagas_disponiveis, 24)),
+            linha=[i.player for i in confirmadas if i.posicao == Posicao.LINHA],
+            goleiros=[i.player for i in confirmadas if i.posicao == Posicao.GOLEIRO],
+            livres_linha=livres_linha,
+            livres_goleiro=livres_goleiro,
+            vagas_livres_linha=range(min(livres_linha, 24)),
+            vagas_livres_goleiro=range(livres_goleiro),
+            minha_inscricao=minha,
+            na_lista_de_espera=na_lista,
         )
         return contexto
 
 
-class ReservarVagaView(LoginRequiredMixin, View):
-    """GET mostra a confirmação da reserva; POST cria a inscrição e abre o comprovante."""
+class CheckoutView(LoginRequiredMixin, View):
+    """GET mostra a escolha da vaga e do pagamento; POST reserva a vaga e cobra."""
 
     _MENSAGEM_NAO_JOGADOR = (
         "Sua conta não é de jogador. Crie uma conta de jogador para reservar vagas."
@@ -107,39 +136,115 @@ class ReservarVagaView(LoginRequiredMixin, View):
 
     def get(self, request: HttpRequest, pk: str) -> HttpResponse:
         partida = self._partida(pk)
-        bloqueio = self._motivo_bloqueio(partida)
-        if bloqueio:
-            messages.warning(request, bloqueio)
-            return redirect(partida)
-        return render(request, "arena/reservar.html", {"partida": partida})
+        resposta = self._bloqueio(partida)
+        if resposta:
+            return resposta
+        return self._exibir(partida, self._formulario(partida))
 
     def post(self, request: HttpRequest, pk: str) -> HttpResponse:
         partida = self._partida(pk)
-        if not request.user.is_player:
-            messages.error(request, self._MENSAGEM_NAO_JOGADOR)
-            return redirect(partida)
-        inscricao = Booking(open_match=partida, player=request.user)
+        resposta = self._bloqueio(partida)
+        if resposta:
+            return resposta
+        form = self._formulario(partida, request.POST)
+        if not form.is_valid():
+            return self._exibir(partida, form)
         try:
-            inscricao.save()
+            inscricao = checkout.iniciar_checkout(
+                partida,
+                request.user,
+                posicao=form.cleaned_data["posicao"],
+                metodo=form.cleaned_data["metodo"],
+            )
         except ValidationError as erro:
-            messages.error(request, " ".join(erro.messages))
+            messages.error(request, _mensagens(erro))
             return redirect(partida)
-        messages.success(request, "Vaga garantida! Agora é só combinar o pagamento com a arena.")
-        return redirect("arena:inscricao", pk=inscricao.pk)
+        if inscricao.status == StatusInscricao.CONFIRMADA:
+            messages.success(request, "Vaga garantida! Te vemos em campo.")
+            return redirect("arena:inscricao", pk=inscricao.pk)
+        if inscricao.status == StatusInscricao.AGUARDANDO_PAGAMENTO:
+            return redirect("arena:pagamento", pk=inscricao.pk)
+        messages.error(request, "O pagamento não foi concluído. A vaga voltou para a partida.")
+        return redirect(partida)
 
     def _partida(self, pk: str) -> OpenMatch:
         return get_object_or_404(OpenMatch.objects.com_relacionados(), pk=pk)
 
-    def _motivo_bloqueio(self, partida: OpenMatch) -> str | None:
-        """Explica por que o usuário não pode reservar agora (``None`` se pode)."""
+    def _formulario(self, partida: OpenMatch, dados: Any = None) -> CheckoutForm:
+        return CheckoutForm(dados, partida=partida, saldo=razao.saldo_do_jogador(self.request.user))
+
+    def _exibir(self, partida: OpenMatch, form: CheckoutForm) -> HttpResponse:
+        return render(
+            self.request,
+            "arena/checkout.html",
+            {
+                "partida": partida,
+                "form": form,
+                "saldo": razao.saldo_do_jogador(self.request.user),
+                "livres_goleiro": partida.vagas_livres(Posicao.GOLEIRO),
+            },
+        )
+
+    def _bloqueio(self, partida: OpenMatch) -> HttpResponse | None:
+        """Redireciona quem não pode comprar esta vaga agora (``None`` se pode)."""
         usuario = self.request.user
         if not usuario.is_player:
-            return self._MENSAGEM_NAO_JOGADOR
-        if partida.inscricoes.filter(player=usuario, status_pagamento__in=STATUS_OCUPA_VAGA).exists():
-            return "Você já está inscrito nesta partida."
+            messages.warning(self.request, self._MENSAGEM_NAO_JOGADOR)
+            return redirect(partida)
+        ativa = partida.inscricoes.filter(player=usuario, status__in=STATUS_INSCRICAO_ATIVA).first()
+        if ativa is not None:
+            if ativa.status == StatusInscricao.AGUARDANDO_PAGAMENTO and not ativa.reserva_vencida:
+                return redirect("arena:pagamento", pk=ativa.pk)
+            if ativa.status == StatusInscricao.CONFIRMADA:
+                messages.info(self.request, "Você já está nesta partida.")
+                return redirect("arena:inscricao", pk=ativa.pk)
         if not partida.aceita_inscricoes:
-            return "Esta partida não está aceitando novas inscrições."
+            messages.warning(self.request, "Esta partida não está aceitando novas inscrições.")
+            return redirect(partida)
         return None
+
+
+class PagamentoView(LoginRequiredMixin, DetailView):
+    """Pix pendente: código copia e cola e prazo da reserva da vaga."""
+
+    template_name = "arena/pagamento.html"
+    context_object_name = "inscricao"
+
+    def get_queryset(self) -> QuerySet:
+        return Booking.objects.filter(player=self.request.user).select_related(
+            "open_match__time_slot__court__arena"
+        )
+
+    def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        self.object = self.get_object()
+        if self.object.status != StatusInscricao.AGUARDANDO_PAGAMENTO or self.object.reserva_vencida:
+            return redirect("arena:inscricao", pk=self.object.pk)
+        return self.render_to_response(self.get_context_data(object=self.object))
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto.update(
+            pagamento=self.object.pagamentos.filter(status=StatusPagamento.PENDENTE).first(),
+            permite_simulacao=obter_gateway().permite_simulacao,
+        )
+        return contexto
+
+
+class SimularPagamentoView(LoginRequiredMixin, View):
+    """Aprova o Pix pendente (gateway simulado de desenvolvimento)."""
+
+    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
+        inscricao = get_object_or_404(Booking, pk=pk, player=request.user)
+        try:
+            inscricao = checkout.simular_pagamento(inscricao)
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            if inscricao.status == StatusInscricao.CONFIRMADA:
+                messages.success(request, "Pagamento aprovado. Vaga garantida!")
+            else:
+                messages.warning(request, "O prazo da reserva acabou e a vaga foi para outro jogador. O valor foi devolvido.")
+        return redirect("arena:inscricao", pk=pk)
 
 
 class InscricaoView(LoginRequiredMixin, DetailView):
@@ -155,23 +260,59 @@ class InscricaoView(LoginRequiredMixin, DetailView):
 
 
 class CancelarInscricaoView(LoginRequiredMixin, View):
-    """Cancela uma inscrição pendente do jogador e devolve a vaga."""
+    """Cancela a inscrição do jogador conforme a política (crédito até 24h antes)."""
 
     def post(self, request: HttpRequest, pk: str) -> HttpResponse:
-        inscricao = get_object_or_404(
-            Booking.objects.select_related("open_match__time_slot"), pk=pk, player=request.user
-        )
+        inscricao = get_object_or_404(Booking, pk=pk, player=request.user)
         try:
-            inscricao.cancelar()
+            mensagem = checkout.cancelar_inscricao(inscricao)
         except ValidationError as erro:
-            messages.error(request, " ".join(erro.messages))
+            messages.error(request, _mensagens(erro))
             return redirect("arena:inscricao", pk=pk)
-        messages.success(request, "Inscrição cancelada. A vaga voltou para a partida.")
+        messages.success(request, mensagem)
         return redirect("arena:minhas_inscricoes")
 
 
+class RepassarVagaView(LoginRequiredMixin, View):
+    """Libera a vaga paga para a lista de espera (ou desfaz o repasse)."""
+
+    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
+        inscricao = get_object_or_404(Booking, pk=pk, player=request.user)
+        try:
+            if request.POST.get("acao") == "desfazer":
+                checkout.desfazer_repasse(inscricao)
+                messages.success(request, "Repasse desfeito. A vaga continua sua.")
+            else:
+                checkout.repassar_vaga(inscricao)
+                messages.success(
+                    request,
+                    "Vaga liberada para a lista de espera. Se alguém assumir, você recebe crédito integral.",
+                )
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        return redirect("arena:inscricao", pk=pk)
+
+
+class ListaDeEsperaView(LoginRequiredMixin, View):
+    """Entra ou sai da lista de espera de uma partida lotada."""
+
+    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
+        partida = get_object_or_404(OpenMatch.objects.com_relacionados(), pk=pk)
+        if request.POST.get("acao") == "sair":
+            checkout.sair_da_lista_de_espera(partida, request.user)
+            messages.info(request, "Você saiu da lista de espera.")
+            return redirect(partida)
+        try:
+            checkout.entrar_na_lista_de_espera(partida, request.user, request.POST.get("posicao", Posicao.LINHA))
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            messages.success(request, "Você está na lista de espera. Avisamos por e-mail se abrir vaga.")
+        return redirect(partida)
+
+
 class MinhasInscricoesView(LoginRequiredMixin, TemplateView):
-    """Inscrições do jogador, separadas entre próximas partidas e histórico."""
+    """Inscrições do jogador (próximas e histórico) e o crédito disponível."""
 
     template_name = "arena/minhas_inscricoes.html"
 
@@ -179,18 +320,44 @@ class MinhasInscricoesView(LoginRequiredMixin, TemplateView):
         contexto = super().get_context_data(**kwargs)
         inscricoes = (
             Booking.objects.filter(player=self.request.user)
+            .exclude(status__in=(StatusInscricao.EXPIRADA, StatusInscricao.CANCELADA), confirmada_em__isnull=True)
             .select_related("open_match__time_slot__court__arena")
             .order_by("open_match__time_slot__data", "open_match__time_slot__hora_inicio")
         )
         proximas, anteriores = [], []
         for inscricao in inscricoes:
             (anteriores if inscricao.open_match.time_slot.ja_comecou else proximas).append(inscricao)
-        contexto.update(proximas=proximas, anteriores=anteriores[::-1])
+        contexto.update(
+            proximas=proximas,
+            anteriores=anteriores[::-1],
+            saldo=razao.saldo_do_jogador(self.request.user),
+            extrato=razao.extrato_do_jogador(self.request.user)[:10],
+        )
         return contexto
 
 
+@method_decorator(csrf_exempt, name="dispatch")
+class PagamentoWebhookView(View):
+    """Recebe as notificações do gateway de pagamento (webhook)."""
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        try:
+            notificacao = obter_gateway().interpretar_notificacao(request)
+        except PermissionDenied:
+            return HttpResponseForbidden()
+        except ValueError:
+            return HttpResponseBadRequest()
+        try:
+            pagamento = checkout.processar_notificacao(
+                notificacao.gateway_id, aprovado=notificacao.aprovado, resposta=notificacao.resposta
+            )
+        except Payment.DoesNotExist:
+            return HttpResponseNotFound()
+        return JsonResponse({"status": pagamento.status})
+
+
 class EntrarView(LoginView):
-    """Login da vitrine (jogadores); gestores usam o painel em /admin/."""
+    """Login da vitrine (jogadores); gestores usam o portal em /manager/."""
 
     template_name = "arena/entrar.html"
     redirect_authenticated_user = True
@@ -334,6 +501,7 @@ class GestorAgendaView(GestorRequiredMixin, TemplateView):
             proxima_semana=inicio + timedelta(days=7),
             semana_atual=gestao.inicio_da_semana(hoje),
             aluguel_sugerido=gestao.aluguel_sugerido(quadra) if quadra else None,
+            goleiros_sugeridos=gestao.vagas_goleiro_sugeridas(quadra.capacidade_padrao) if quadra else 0,
             niveis=NivelCompetitividade.choices,
         )
         return contexto
@@ -358,9 +526,10 @@ class GestorAbrirPartidaView(GestorRequiredMixin, View):
                 dados["valor_total_aluguel"],
                 dados["nivel_competitividade"],
                 dados["vagas_totais"],
+                dados["vagas_goleiro"],
             )
         except ValidationError as erro:
-            messages.error(request, " ".join(erro.messages))
+            messages.error(request, _mensagens(erro))
         else:
             horario = partida.time_slot
             messages.success(
@@ -371,56 +540,60 @@ class GestorAbrirPartidaView(GestorRequiredMixin, View):
         return redirect(destino)
 
 
+class GestorCancelarPartidaView(GestorRequiredMixin, View):
+    """Cancela uma partida da arena; todos os inscritos são reembolsados na hora."""
+
+    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
+        partida = get_object_or_404(OpenMatch, pk=pk, time_slot__court__arena__in=self.arenas)
+        try:
+            reembolsados = partidas.cancelar_partida(partida, MotivoCancelamento.ARENA)
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            messages.success(
+                request,
+                f"Partida cancelada. {reembolsados} jogador(es) reembolsado(s) automaticamente.",
+            )
+        return redirect(_destino_seguro(request, request.POST.get("voltar"), reverse("gestor:dashboard")))
+
+
 class GestorFinanceiroView(GestorRequiredMixin, TemplateView):
-    """Valor líquido da quadra: recebido, pendente e reembolsado, por inscrição."""
+    """Carteira da arena: saldo disponível, a liberar, extrato e repasses."""
 
     template_name = "arena/manager_financeiro.html"
     secao = "financeiro"
     por_pagina = 20
-    periodos = (("", "Todo o período"), ("proximas", "Próximas partidas"), ("mes", "Este mês"))
+    periodos = (("", "Todo o período"), ("mes", "Este mês"), ("a_liberar", "A liberar"))
+    tipos = (
+        ("", "Tudo"),
+        (TipoLancamento.VENDA_VAGA, "Vendas"),
+        (TipoLancamento.ESTORNO, "Estornos"),
+        (TipoLancamento.REPASSE, "Repasses"),
+        (TipoLancamento.AJUSTE_FECHAMENTO, "Ajustes"),
+    )
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         contexto = super().get_context_data(**kwargs)
-        status = self.request.GET.get("status", "")
-        status = status if status in StatusPagamento.values else ""
+        tipo = self.request.GET.get("tipo", "")
+        tipo = tipo if tipo in dict(self.tipos) else ""
         periodo = self.request.GET.get("periodo", "")
         periodo = periodo if periodo in dict(self.periodos) else ""
-        inscricoes = gestao.inscricoes_financeiro(self.arena, status or None, periodo or None)
+        lancamentos = gestao.extrato_financeiro(self.arena, tipo or None, periodo or None)
         contexto.update(
             resumo=gestao.resumo_financeiro(self.arena),
-            pagina=Paginator(inscricoes, self.por_pagina).get_page(self.request.GET.get("pagina")),
-            status=status,
+            pagina=Paginator(lancamentos, self.por_pagina).get_page(self.request.GET.get("pagina")),
+            repasses=self.arena.repasses.all()[:10],
+            tipo=tipo,
             periodo=periodo,
-            filtros_status=[("", "Todas"), *StatusPagamento.choices],
+            filtros_tipo=self.tipos,
             periodos=self.periodos,
+            agora=timezone.now(),
         )
         return contexto
 
 
-class GestorPagamentoView(GestorRequiredMixin, View):
-    """Marca uma inscrição como paga ou reembolsada."""
-
-    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
-        inscricao = get_object_or_404(
-            Booking.objects.select_related("player", "open_match__time_slot"),
-            pk=pk,
-            open_match__time_slot__court__arena__in=self.arenas,
-        )
-        status = request.POST.get("status", "")
-        try:
-            gestao.registrar_pagamento(inscricao, status)
-        except ValidationError as erro:
-            messages.error(request, " ".join(erro.messages))
-        else:
-            messages.success(
-                request,
-                f"Inscrição de {inscricao.player} marcada como {StatusPagamento(status).label.lower()}.",
-            )
-        return redirect(_destino_seguro(request, request.POST.get("voltar"), reverse("gestor:financeiro")))
-
-
 class GestorConfiguracoesView(GestorRequiredMixin, TemplateView):
-    """Dados da arena e cadastro de quadras."""
+    """Dados da arena, regras de mínimo de jogadores e cadastro de quadras."""
 
     template_name = "arena/manager_configuracoes.html"
     secao = "configuracoes"

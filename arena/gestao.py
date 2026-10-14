@@ -1,8 +1,9 @@
 """Cálculos e ações do Portal do Gestor (ArenaManager).
 
 Concentra indicadores, grade semanal da agenda e financeiro para manter as views
-enxutas. Tudo o que o gestor vê é o valor líquido da quadra (parte do aluguel em
-cada vaga, congelada na inscrição); a taxa da plataforma, paga pelo jogador, não aparece.
+enxutas. O gestor vê o valor líquido da quadra (parte do aluguel em cada vaga,
+congelada na inscrição). O dinheiro vem do razão contábil: vendas "a liberar"
+até o dia seguinte à partida, saldo disponível e repasses.
 """
 
 from collections import Counter
@@ -17,18 +18,24 @@ from django.db import transaction
 from django.db.models import Q, QuerySet, Sum
 from django.utils import timezone
 
+from . import razao
 from .models import (
     MEIA_NOITE,
     STATUS_HORARIO_LIVRE,
     STATUS_PARTIDA_ATIVA,
+    ZERO,
     Arena,
     Booking,
     Court,
+    LedgerEntry,
     OpenMatch,
+    Posicao,
     StatusHorario,
-    StatusPagamento,
+    StatusInscricao,
     StatusPartida,
     TimeSlot,
+    TipoConta,
+    TipoLancamento,
     TipoPiso,
     TipoReserva,
 )
@@ -41,6 +48,8 @@ ALUGUEL_PADRAO_POR_PISO = {
     TipoPiso.AREIA: Decimal("160"),
     TipoPiso.CAMPO: Decimal("400"),
 }
+# Lançamentos da arena que compõem as vendas (o repasse só move o saldo).
+TIPOS_DE_VENDA = (TipoLancamento.VENDA_VAGA, TipoLancamento.ESTORNO, TipoLancamento.AJUSTE_FECHAMENTO)
 
 
 class TipoCelula(StrEnum):
@@ -83,7 +92,7 @@ class Celula:
     tipo: TipoCelula
     horario: TimeSlot | None = None
     partida: OpenMatch | None = None
-    liquido: Decimal = Decimal("0")
+    garantido: Decimal = ZERO
 
     @property
     def rotulo(self) -> str:
@@ -106,9 +115,10 @@ class LinhaGrade:
 class Indicadores:
     """KPIs do dashboard."""
 
-    liquido_mes: Decimal
-    pagamentos_mes: int
-    liquido_pendente: Decimal
+    vendido_mes: Decimal
+    vagas_vendidas_mes: int
+    a_liberar: Decimal
+    disponivel: Decimal
     horarios_vagos: int
     aluguel_por_horario: Decimal
     horarios_mensalistas: int
@@ -117,17 +127,17 @@ class Indicadores:
 
 @dataclass(frozen=True)
 class ResumoPartida:
-    """Partida aberta com o valor líquido da quadra já pago e ainda pendente."""
+    """Partida aberta com o valor da quadra já garantido (pago) e em pagamento."""
 
     partida: OpenMatch
-    liquido_pago: Decimal
-    liquido_pendente: Decimal
+    garantido: Decimal
+    em_pagamento: Decimal
 
     @property
     def percentual_do_aluguel(self) -> int:
         """Quanto do aluguel já foi pago (0 a 100), para a barra de progresso."""
         aluguel = self.partida.valor_total_aluguel
-        return min(100, round(100 * self.liquido_pago / aluguel)) if aluguel else 0
+        return min(100, round(100 * self.garantido / aluguel)) if aluguel else 0
 
 
 # --- Escopo e preços ---------------------------------------------------------
@@ -148,6 +158,11 @@ def aluguel_sugerido(quadra: Court) -> Decimal:
         .first()
     )
     return ultimo or ALUGUEL_PADRAO_POR_PISO.get(quadra.tipo_piso, Decimal("200"))
+
+
+def vagas_goleiro_sugeridas(vagas: int) -> int:
+    """Dois goleiros a partir de 8 jogadores (futsal, society, campo); nenhum abaixo disso."""
+    return 2 if vagas >= 8 else 0
 
 
 def inicio_da_semana(dia: date) -> date:
@@ -172,22 +187,17 @@ def _partida_do_horario(horario: TimeSlot) -> OpenMatch | None:
         return None
 
 
-def _liquido_por_partida(partidas: list[OpenMatch]) -> dict:
-    """Valor líquido da quadra já pago em cada partida."""
+def _garantido_por_partida(partidas: list[OpenMatch]) -> dict:
+    """Valor da quadra já pago em cada partida (com o ajuste de fechamento, se lotou)."""
     pagas = (
-        Booking.objects.filter(open_match__in=partidas, status_pagamento=StatusPagamento.PAGO)
+        Booking.objects.filter(open_match__in=partidas, status=StatusInscricao.CONFIRMADA)
         .values("open_match_id")
         .annotate(total=Sum("valor_vaga"))
     )
     totais = {linha["open_match_id"]: linha["total"] for linha in pagas}
-    com_pendencias = set(
-        Booking.objects.filter(
-            open_match__in=partidas, status_pagamento=StatusPagamento.PENDENTE
-        ).values_list("open_match_id", flat=True)
-    )
     for partida in partidas:
-        if partida.pk not in com_pendencias:
-            totais[partida.pk] = (totais.get(partida.pk) or Decimal("0")) + partida.ajuste_repasse_fechamento
+        if partida.pk in totais:
+            totais[partida.pk] += partida.ajuste_repasse_fechamento
     return totais
 
 
@@ -197,7 +207,7 @@ def _celula(
     hora: int,
     horario: TimeSlot | None,
     agora: datetime,
-    liquido: dict,
+    garantido: dict,
 ) -> Celula:
     inicio, fim = time(hora), time((hora + 1) % 24)
     if horario is not None:
@@ -210,7 +220,7 @@ def _celula(
     partida = _partida_do_horario(horario)
     if partida is not None and partida.status != StatusPartida.CANCELADA:
         tipo = TipoCelula.LOTADA if partida.status == StatusPartida.LOTADA else TipoCelula.PARTIDA
-        return Celula(quadra, dia, inicio, fim, tipo, horario, partida, liquido.get(partida.pk, Decimal("0")))
+        return Celula(quadra, dia, inicio, fim, tipo, horario, partida, garantido.get(partida.pk, ZERO))
     if horario.status == StatusHorario.CONFIRMADO:
         return Celula(quadra, dia, inicio, fim, _TIPO_POR_RESERVA[horario.tipo_reserva], horario)
     return Celula(quadra, dia, inicio, fim, livre, horario)
@@ -229,14 +239,15 @@ def grade_da_quadra(quadra: Court, dias: list[date]) -> list[LinhaGrade]:
     )
     por_posicao = {(h.data, h.hora_inicio.hour): h for h in horarios}
     partidas = [p for h in horarios if (p := _partida_do_horario(h)) is not None]
-    liquido = _liquido_por_partida(partidas)
+    garantido = _garantido_por_partida(partidas)
     horas = sorted(set(_horas_de_funcionamento(quadra.arena)) | {h.hora_inicio.hour for h in horarios})
     agora = timezone.localtime()
     return [
         LinhaGrade(
             inicio=time(hora),
             celulas=[
-                _celula(quadra, dia, hora, por_posicao.get((dia, hora)), agora, liquido) for dia in dias
+                _celula(quadra, dia, hora, por_posicao.get((dia, hora)), agora, garantido)
+                for dia in dias
             ],
         )
         for hora in horas
@@ -264,47 +275,19 @@ def agenda_de_hoje(arena: Arena) -> list[Celula]:
 # --- Indicadores e financeiro -------------------------------------------------
 
 
-def _liquido(inscricoes: QuerySet[Booking]) -> Decimal:
-    """Soma da parte da quadra nas inscrições (sem a taxa da plataforma)."""
-    return inscricoes.aggregate(total=Sum("valor_vaga"))["total"] or Decimal("0")
-
-
-def _inscricoes(arena: Arena) -> QuerySet[Booking]:
-    return Booking.objects.filter(open_match__time_slot__court__arena=arena)
-
-
-def _do_mes(inscricoes: QuerySet[Booking], dia: date) -> QuerySet[Booking]:
-    return inscricoes.filter(
-        open_match__time_slot__data__year=dia.year, open_match__time_slot__data__month=dia.month
+def _vendas_do_mes(arena: Arena, dia: date) -> QuerySet[LedgerEntry]:
+    """Lançamentos de venda da arena em partidas do mês de ``dia``."""
+    return LedgerEntry.objects.filter(
+        conta__tipo=TipoConta.ARENA,
+        conta__arena=arena,
+        tipo__in=TIPOS_DE_VENDA,
+        partida__time_slot__data__year=dia.year,
+        partida__time_slot__data__month=dia.month,
     )
 
 
-def _ajustes_fechamento(arena: Arena, *, pendente: bool, dia: date | None = None) -> Decimal:
-    """Soma os resíduos de rateio no grupo que ainda deve recebê-los.
-
-    Quando há inscrições pendentes, o ajuste fica em ``a receber``. Depois que
-    todas são pagas, ele passa para o valor recebido. ``dia`` limita a soma ao
-    mês da partida para os indicadores mensais.
-    """
-    partidas = OpenMatch.objects.filter(
-        time_slot__court__arena=arena, vagas_disponiveis=0
-    ).exclude(status=StatusPartida.CANCELADA)
-    if dia is not None:
-        partidas = partidas.filter(
-            time_slot__data__year=dia.year, time_slot__data__month=dia.month
-        )
-    total = Decimal("0.00")
-    for partida in partidas.select_related("time_slot"):
-        tem_pendente = partida.inscricoes.filter(
-            status_pagamento=StatusPagamento.PENDENTE
-        ).exists()
-        if tem_pendente == pendente:
-            total += partida.ajuste_repasse_fechamento
-    return total
-
-
 def indicadores_dashboard(arena: Arena) -> Indicadores:
-    """KPIs: líquido do mês, previsto, horários vagos e mensalistas (próximos 7 dias)."""
+    """KPIs: vendas do mês, saldo da carteira, horários vagos e mensalistas (7 dias)."""
     hoje = timezone.localdate()
     dias = [hoje + timedelta(days=i) for i in range(DIAS_DA_SEMANA)]
     quadras = list(arena.quadras.all())
@@ -312,91 +295,83 @@ def indicadores_dashboard(arena: Arena) -> Indicadores:
     alugueis = {quadra.pk: aluguel_sugerido(quadra) for quadra in quadras}
     vagas = [c for c in celulas if c.tipo == TipoCelula.VAGO]
     mensalistas = [c for c in celulas if c.tipo == TipoCelula.MENSALISTA]
-    inscricoes = _inscricoes(arena)
-    pagas_mes = _do_mes(inscricoes, hoje).filter(status_pagamento=StatusPagamento.PAGO)
-    pendentes = inscricoes.filter(
-        status_pagamento=StatusPagamento.PENDENTE, open_match__status__in=STATUS_PARTIDA_ATIVA
+    saldo = razao.saldo_da_arena(arena)
+    vendidas = Booking.objects.filter(
+        open_match__time_slot__court__arena=arena,
+        open_match__time_slot__data__year=hoje.year,
+        open_match__time_slot__data__month=hoje.month,
+        status=StatusInscricao.CONFIRMADA,
+        posicao=Posicao.LINHA,
     )
     return Indicadores(
-        liquido_mes=_liquido(pagas_mes) + _ajustes_fechamento(arena, pendente=False, dia=hoje),
-        pagamentos_mes=pagas_mes.count(),
-        liquido_pendente=_liquido(pendentes) + _ajustes_fechamento(arena, pendente=True),
+        vendido_mes=razao.saldo(_vendas_do_mes(arena, hoje)),
+        vagas_vendidas_mes=vendidas.count(),
+        a_liberar=saldo.a_liberar,
+        disponivel=saldo.disponivel,
         horarios_vagos=len(vagas),
         # Aluguel que um horário vago rende para a quadra se virar partida e lotar.
-        aluguel_por_horario=max((alugueis[c.quadra.pk] for c in vagas), default=Decimal("0")),
+        aluguel_por_horario=max((alugueis[c.quadra.pk] for c in vagas), default=ZERO),
         horarios_mensalistas=len(mensalistas),
         quadras_com_mensalistas=len({c.quadra.pk for c in mensalistas}),
     )
 
 
 def proximas_partidas(arena: Arena, limite: int = 8) -> list[ResumoPartida]:
-    """Próximas partidas abertas com o líquido da quadra pago e pendente."""
+    """Próximas partidas abertas com o valor da quadra já pago e em pagamento."""
+    agora = timezone.now()
     partidas = (
         OpenMatch.objects.futuras()
         .filter(time_slot__court__arena=arena, status__in=STATUS_PARTIDA_ATIVA)
         .com_relacionados()
+        .com_confirmados()
         .annotate(
-            liquido_pago=Sum(
-                "inscricoes__valor_vaga", filter=Q(inscricoes__status_pagamento=StatusPagamento.PAGO)
-            ),
-            liquido_pendente=Sum(
-                "inscricoes__valor_vaga", filter=Q(inscricoes__status_pagamento=StatusPagamento.PENDENTE)
+            pago=Sum("inscricoes__valor_vaga", filter=Q(inscricoes__status=StatusInscricao.CONFIRMADA)),
+            em_pagamento=Sum(
+                "inscricoes__valor_vaga",
+                filter=Q(
+                    inscricoes__status=StatusInscricao.AGUARDANDO_PAGAMENTO,
+                    inscricoes__reservada_ate__gt=agora,
+                ),
             ),
         )
         .order_by("time_slot__data", "time_slot__hora_inicio")[:limite]
     )
-    zero = Decimal("0")
-    resumos = []
-    for partida in partidas:
-        pago = partida.liquido_pago or zero
-        pendente = partida.liquido_pendente or zero
-        ajuste = partida.ajuste_repasse_fechamento
-        if pendente:
-            pendente += ajuste
-        else:
-            pago += ajuste
-        resumos.append(ResumoPartida(partida, pago, pendente))
-    return resumos
+    return [
+        ResumoPartida(
+            partida,
+            (partida.pago or ZERO) + partida.ajuste_repasse_fechamento,
+            partida.em_pagamento or ZERO,
+        )
+        for partida in partidas
+    ]
 
 
 def resumo_financeiro(arena: Arena) -> dict[str, Decimal | int]:
-    """Totais do financeiro em valor líquido da quadra: pago e reembolsado no mês e pendente."""
+    """Saldo da carteira (disponível, a liberar, repassado no mês) e vendas do mês."""
     hoje = timezone.localdate()
-    inscricoes = _inscricoes(arena)
-    do_mes = _do_mes(inscricoes, hoje)
-    pagas_mes = do_mes.filter(status_pagamento=StatusPagamento.PAGO)
-    pendentes = inscricoes.filter(
-        status_pagamento=StatusPagamento.PENDENTE, open_match__status__in=STATUS_PARTIDA_ATIVA
-    )
+    saldo = razao.saldo_da_arena(arena)
     return {
-        "liquido_mes": _liquido(pagas_mes) + _ajustes_fechamento(arena, pendente=False, dia=hoje),
-        "pagamentos_mes": pagas_mes.count(),
-        "liquido_pendente": _liquido(pendentes) + _ajustes_fechamento(arena, pendente=True),
-        "reembolsado_mes": _liquido(do_mes.filter(status_pagamento=StatusPagamento.REEMBOLSADO)),
+        "disponivel": saldo.disponivel,
+        "a_liberar": saldo.a_liberar,
+        "repassado_mes": saldo.repassado_no_mes,
+        "vendido_mes": razao.saldo(_vendas_do_mes(arena, hoje)),
     }
 
 
-def inscricoes_financeiro(arena: Arena, status: str | None, periodo: str | None) -> QuerySet[Booking]:
-    """Inscrições da arena para a tabela do financeiro, com filtros opcionais."""
+def extrato_financeiro(arena: Arena, tipo: str | None, periodo: str | None) -> QuerySet[LedgerEntry]:
+    """Lançamentos da carteira da arena para o extrato, com filtros opcionais."""
+    lancamentos = razao.extrato_da_arena(arena)
+    if tipo:
+        lancamentos = lancamentos.filter(tipo=tipo)
     hoje = timezone.localdate()
-    inscricoes = _inscricoes(arena).select_related("player", "open_match__time_slot__court")
-    if status:
-        inscricoes = inscricoes.filter(status_pagamento=status)
-    if periodo == "proximas":
-        inscricoes = inscricoes.filter(open_match__time_slot__data__gte=hoje)
-    elif periodo == "mes":
-        inscricoes = _do_mes(inscricoes, hoje)
-    return inscricoes.order_by(
-        "open_match__time_slot__data", "open_match__time_slot__hora_inicio", "player__first_name"
-    )
+    if periodo == "mes":
+        lancamentos = lancamentos.filter(created_at__year=hoje.year, created_at__month=hoje.month)
+    elif periodo == "a_liberar":
+        lancamentos = lancamentos.filter(disponivel_em__gt=timezone.now())
+    return lancamentos
 
 
 # --- Ações -------------------------------------------------------------------
-
-_TRANSICOES_PAGAMENTO = {
-    StatusPagamento.PENDENTE: {StatusPagamento.PAGO},
-    StatusPagamento.PAGO: {StatusPagamento.REEMBOLSADO},
-}
 
 
 @transaction.atomic
@@ -408,11 +383,12 @@ def abrir_partida(
     aluguel: Decimal,
     nivel: str,
     vagas: int | None = None,
+    vagas_goleiro: int | None = None,
 ) -> OpenMatch:
     """Publica uma partida aberta num horário vago da quadra.
 
-    O gestor informa só o aluguel total e as vagas; o preço de cada vaga para o
-    jogador é calculado pela partida (parte da quadra + taxa da plataforma).
+    O gestor informa o aluguel total e as vagas; goleiros não pagam, e o preço de
+    cada vaga de linha é calculado pela partida (parte da quadra + taxa).
 
     Cria o horário na agenda quando ainda não existe e reabre uma partida
     cancelada no mesmo horário.
@@ -424,6 +400,7 @@ def abrir_partida(
     if timezone.make_aware(datetime.combine(dia, inicio)) <= timezone.localtime():
         raise ValidationError("Este horário já começou.")
     vagas = vagas or quadra.capacidade_padrao
+    vagas_goleiro = vagas_goleiro_sugeridas(vagas) if vagas_goleiro is None else vagas_goleiro
     horario = TimeSlot.objects.filter(court=quadra, data=dia, hora_inicio=inicio).first()
     if horario is None:
         horario = TimeSlot.objects.create(
@@ -440,28 +417,17 @@ def abrir_partida(
     partida = OpenMatch.objects.filter(time_slot=horario).first()
     if partida is None:
         return OpenMatch.objects.create(
-            time_slot=horario, vagas_totais=vagas, valor_total_aluguel=aluguel, nivel_competitividade=nivel
+            time_slot=horario,
+            vagas_totais=vagas,
+            vagas_goleiro=vagas_goleiro,
+            valor_total_aluguel=aluguel,
+            nivel_competitividade=nivel,
         )
     if partida.status != StatusPartida.CANCELADA:
         raise ValidationError("Este horário já tem uma partida aberta.")
     partida.status = StatusPartida.ABERTA
-    partida.vagas_totais, partida.valor_total_aluguel, partida.nivel_competitividade = vagas, aluguel, nivel
+    partida.motivo_cancelamento, partida.cancelada_em, partida.quorum_conferido_em = "", None, None
+    partida.vagas_totais, partida.vagas_goleiro = vagas, vagas_goleiro
+    partida.valor_total_aluguel, partida.nivel_competitividade = aluguel, nivel
     partida.save()
     return partida
-
-
-def registrar_pagamento(inscricao: Booking, status: str) -> None:
-    """Marca uma inscrição como paga (se pendente) ou reembolsada (se paga).
-
-    Raises:
-        ValidationError: transição não permitida ou regra do modelo violada.
-    """
-    if status not in StatusPagamento.values:
-        raise ValidationError("Status de pagamento inválido.")
-    if status not in _TRANSICOES_PAGAMENTO.get(inscricao.status_pagamento, set()):
-        raise ValidationError(
-            f"Não é possível mudar o pagamento de {inscricao.get_status_pagamento_display().lower()} "
-            f"para {StatusPagamento(status).label.lower()}."
-        )
-    inscricao.status_pagamento = status
-    inscricao.save()

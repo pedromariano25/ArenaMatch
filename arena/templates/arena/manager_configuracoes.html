@@ -28,6 +28,15 @@
         {% include "arena/_manager_campo.html" with campo=form_arena.hora_abertura %}
         {% include "arena/_manager_campo.html" with campo=form_arena.hora_fechamento %}
       </div>
+      <div class="border-t border-slate-100 pt-5">
+        <p class="text-sm font-medium text-slate-900">Mínimo de jogadores</p>
+        <p class="mt-0.5 text-sm text-slate-500">Partidas que não atingem o mínimo de vagas pagas até o prazo são canceladas, e todos os jogadores são reembolsados.</p>
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          {% include "arena/_manager_campo.html" with campo=form_arena.quorum_percentual %}
+          {% include "arena/_manager_campo.html" with campo=form_arena.horas_prazo_quorum %}
+        </div>
+      </div>
+      <p class="text-xs text-slate-500">Contrato ArenaMatch: taxa de serviço de {{ arena.taxa_plataforma_percentual|floatformat:"-2" }}% (mínimo de {{ arena.taxa_minima|brl }}), paga pelo jogador de linha. Goleiros não pagam.</p>
       <div class="flex justify-end border-t border-slate-100 pt-5">
         <button type="submit" name="salvar_arena" class="rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">Salvar alterações</button>
       </div>

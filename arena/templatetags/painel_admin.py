@@ -14,7 +14,7 @@ from ..models import (
     Booking,
     OpenMatch,
     StatusHorario,
-    StatusPagamento,
+    StatusInscricao,
     TimeSlot,
 )
 
@@ -46,9 +46,10 @@ def indicadores_painel(context: dict[str, Any]) -> dict[str, Any]:
         open_match__time_slot__data__range=periodo,
     )
     receita = inscricoes.aggregate(
-        paga=Sum("valor_vaga", filter=Q(status_pagamento=StatusPagamento.PAGO)),
+        paga=Sum("valor_vaga", filter=Q(status=StatusInscricao.CONFIRMADA)),
         pendente=Sum(
-            "valor_vaga", filter=Q(status_pagamento=StatusPagamento.PENDENTE)
+            "valor_vaga",
+            filter=Q(status=StatusInscricao.AGUARDANDO_PAGAMENTO, reservada_ate__gt=timezone.now()),
         ),
     )
 

@@ -20,11 +20,11 @@
   <div class="h-full min-h-20 rounded-lg border-l-[3px] p-2 {{ celula.tipo|classes_bloco }}">
     <span class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium {{ celula.tipo|classes_selo }}">{{ celula.rotulo }}</span>
     {% if celula.partida %}
-      <p class="mt-1.5 text-xs font-medium text-slate-800 tabular-nums">{{ celula.partida.vagas_ocupadas }}/{{ celula.partida.vagas_totais }} vagas</p>
+      <p class="mt-1.5 text-xs font-medium text-slate-800 tabular-nums">{{ celula.partida.jogadores_confirmados }}/{{ celula.partida.vagas_totais }} pagos</p>
       <div class="mt-1 h-1 rounded-full bg-emerald-100" role="img" aria-label="{{ celula.partida.percentual_ocupado }}% das vagas vendidas">
         <div class="h-1 rounded-full bg-emerald-600" style="width: {{ celula.partida.percentual_ocupado }}%"></div>
       </div>
-      <p class="mt-1 text-[11px] text-slate-600 tabular-nums">{{ celula.liquido|brl }} recebidos pela quadra</p>
+      <p class="mt-1 text-[11px] text-slate-600 tabular-nums">{{ celula.garantido|brl }} pagos à quadra</p>
     {% else %}
       <p class="mt-1.5 text-[11px] text-slate-500 tabular-nums">{{ celula.intervalo }}</p>
     {% endif %}

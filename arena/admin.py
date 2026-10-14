@@ -2,8 +2,9 @@
 
 O dia a dia dos gestores acontece no Portal do Gestor (``/manager/``); o admin é a
 ferramenta interna da equipe do ArenaMatch. Mesmo assim, gestores com acesso ao
-admin enxergam apenas os dados das próprias arenas. Alterações de status passam
-sempre por ``save()``, para que as regras de negócio e o recálculo de vagas valham.
+admin enxergam apenas os dados das próprias arenas. Inscrições, pagamentos e o
+razão contábil são somente leitura: o dinheiro só se move pelos serviços de
+checkout e de partidas, que mantêm o razão consistente.
 """
 
 from datetime import timedelta
@@ -24,6 +25,8 @@ from django.utils.formats import date_format
 from django.utils.html import format_html
 from django.utils.safestring import SafeString
 
+from . import gestao, razao
+from . import partidas as servico_partidas
 from .formatacao import formatar_brl, formatar_cnpj, formatar_cpf
 from .forms import ConverterPartidaForm
 from .models import (
@@ -32,11 +35,19 @@ from .models import (
     Booking,
     Court,
     CustomUser,
+    LedgerAccount,
+    LedgerEntry,
+    MotivoCancelamento,
     OpenMatch,
+    Payment,
+    Payout,
     StatusHorario,
+    StatusInscricao,
     StatusPagamento,
     StatusPartida,
+    StatusRepasse,
     TimeSlot,
+    WaitlistEntry,
 )
 
 admin.site.site_header = "ArenaMatch · Back-office"
@@ -64,9 +75,18 @@ _COR_POR_STATUS = {
     StatusPartida.LOTADA: "azul",
     StatusPartida.FINALIZADA: "cinza",
     StatusPartida.CANCELADA: "vermelho",
-    StatusPagamento.PAGO: "verde",
+    StatusInscricao.CONFIRMADA: "verde",
+    StatusInscricao.AGUARDANDO_PAGAMENTO: "ambar",
+    StatusInscricao.EXPIRADA: "cinza",
+    StatusInscricao.CANCELADA: "cinza",
+    StatusInscricao.REEMBOLSADA: "azul",
+    StatusPagamento.APROVADO: "verde",
     StatusPagamento.PENDENTE: "ambar",
-    StatusPagamento.REEMBOLSADO: "cinza",
+    StatusPagamento.RECUSADO: "vermelho",
+    StatusPagamento.EXPIRADO: "cinza",
+    StatusPagamento.CANCELADO: "cinza",
+    StatusPagamento.ESTORNADO: "azul",
+    StatusRepasse.FALHOU: "vermelho",
 }
 
 
@@ -156,6 +176,11 @@ _CAMINHO_GESTOR: dict[type[models.Model], str] = {
     TimeSlot: "court__arena__manager",
     OpenMatch: "time_slot__court__arena__manager",
     Booking: "open_match__time_slot__court__arena__manager",
+    WaitlistEntry: "partida__time_slot__court__arena__manager",
+    Payment: "booking__open_match__time_slot__court__arena__manager",
+    LedgerAccount: "arena__manager",
+    LedgerEntry: "conta__arena__manager",
+    Payout: "arena__manager",
 }
 
 
@@ -179,6 +204,19 @@ class EscopoGestorAdmin(admin.ModelAdmin):
         if modelo in _CAMINHO_GESTOR and "queryset" not in kwargs:
             kwargs["queryset"] = _restringir_ao_gestor(modelo._default_manager.all(), request)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class SomenteLeituraAdmin(EscopoGestorAdmin):
+    """Registros que só os serviços alteram (dinheiro e inscrições): consulta apenas."""
+
+    def has_add_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
 
 
 # --- Usuários ----------------------------------------------------------------
@@ -254,6 +292,15 @@ class ArenaAdmin(EscopoGestorAdmin):
         (None, {"fields": ("nome", "slug", "manager")}),
         ("Contato e endereço", {"fields": ("cnpj", "telefone_contato", "endereco_completo")}),
         ("Funcionamento", {"fields": (("hora_abertura", "hora_fechamento"),)}),
+        (
+            "Contrato e regras das partidas",
+            {
+                "fields": (
+                    ("taxa_plataforma_percentual", "taxa_minima"),
+                    ("quorum_percentual", "horas_prazo_quorum"),
+                )
+            },
+        ),
         ("Registro", {"classes": ("collapse",), "fields": ("created_at", "updated_at")}),
     )
 
@@ -270,7 +317,10 @@ class ArenaAdmin(EscopoGestorAdmin):
 
     def get_readonly_fields(self, request: HttpRequest, obj: Arena | None = None) -> tuple[str, ...]:
         campos = tuple(super().get_readonly_fields(request, obj))
-        return campos if request.user.is_superuser else (*campos, "manager")
+        if request.user.is_superuser:
+            return campos
+        # O responsável e o contrato (taxas) só mudam pela equipe da plataforma.
+        return (*campos, "manager", "taxa_plataforma_percentual", "taxa_minima")
 
     def save_model(self, request: HttpRequest, obj: Arena, form: Any, change: bool) -> None:
         if not change and not request.user.is_superuser:
@@ -430,10 +480,13 @@ class TimeSlotAdmin(EscopoGestorAdmin):
         criadas = 0
         ignorados = list(inelegiveis)
         for horario in elegiveis:
+            vagas = dados["vagas_totais"] or horario.court.capacidade_padrao
+            goleiros = dados["vagas_goleiro"]
             try:
                 OpenMatch.objects.create(
                     time_slot=horario,
-                    vagas_totais=dados["vagas_totais"] or horario.court.capacidade_padrao,
+                    vagas_totais=vagas,
+                    vagas_goleiro=gestao.vagas_goleiro_sugeridas(vagas) if goleiros is None else goleiros,
                     valor_total_aluguel=dados["valor_total_aluguel"],
                     nivel_competitividade=dados["nivel_competitividade"],
                 )
@@ -476,12 +529,21 @@ class TimeSlotAdmin(EscopoGestorAdmin):
 
 
 class BookingInline(admin.TabularInline):
-    """Inscrições exibidas e registradas (ex.: jogador avulso no balcão) na partida."""
+    """Inscrições da partida (somente leitura: elas mudam pelo checkout)."""
 
     model = Booking
     extra = 0
-    fields = ("player", "status_pagamento", "data_inscricao")
+    fields = ("player", "posicao", "status", "metodo_pagamento", "valor_pago", "data_inscricao")
+    readonly_fields = fields
     show_change_link = True
+    can_delete = False
+
+    def has_add_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+    @admin.display(description="valor pago")
+    def valor_pago(self, obj: Booking) -> str:
+        return formatar_brl(obj.valor_total)
 
 
 @admin.register(OpenMatch)
@@ -505,28 +567,49 @@ class OpenMatchAdmin(EscopoGestorAdmin):
     search_fields = ("time_slot__court__nome_ou_numero", "time_slot__court__arena__nome")
     list_select_related = ("time_slot__court__arena",)
     ordering = ("time_slot__data", "time_slot__hora_inicio")
-    readonly_fields = ("vagas_disponiveis", "ocupacao", "created_at", "updated_at")
+    readonly_fields = (
+        "status",
+        "vagas_disponiveis",
+        "ocupacao",
+        "motivo_cancelamento",
+        "cancelada_em",
+        "quorum_conferido_em",
+        "created_at",
+        "updated_at",
+    )
     inlines = (BookingInline,)
-    actions = ("finalizar_partidas", "cancelar_partidas")
+    actions = ("cancelar_partidas",)
     formfield_overrides = {models.DecimalField: {"localize": True}}
     fieldsets = (
-        (None, {"fields": ("time_slot", "status")}),
+        (None, {"fields": ("time_slot", "status", "nivel_competitividade")}),
         (
             "Vagas e preço",
             {
                 "fields": (
-                    ("vagas_totais", "vagas_disponiveis"),
+                    ("vagas_totais", "vagas_goleiro", "vagas_disponiveis"),
                     "ocupacao",
-                    ("valor_total_aluguel", "taxa_plataforma_percentual"),
-                    "nivel_competitividade",
+                    "valor_total_aluguel",
+                    ("taxa_plataforma_percentual", "taxa_minima"),
                 )
             },
         ),
-        ("Registro", {"classes": ("collapse",), "fields": ("created_at", "updated_at")}),
+        (
+            "Mínimo de jogadores",
+            {"fields": (("quorum_percentual", "horas_prazo_quorum"), "quorum_conferido_em")},
+        ),
+        (
+            "Registro",
+            {
+                "classes": ("collapse",),
+                "fields": ("motivo_cancelamento", "cancelada_em", "created_at", "updated_at"),
+            },
+        ),
     )
 
     def get_readonly_fields(self, request: HttpRequest, obj: OpenMatch | None = None) -> tuple[str, ...]:
         campos = tuple(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser:
+            campos = (*campos, "taxa_plataforma_percentual", "taxa_minima")
         # Com inscrições vinculadas, a partida não muda de horário.
         return (*campos, "time_slot") if obj else campos
 
@@ -570,56 +653,40 @@ class OpenMatchAdmin(EscopoGestorAdmin):
     def status_selo(self, obj: OpenMatch) -> SafeString:
         return _selo(obj.status, obj.get_status_display())
 
-    @admin.action(description="Finalizar partidas selecionadas", permissions=["change"])
-    def finalizar_partidas(self, request: HttpRequest, queryset: QuerySet) -> None:
-        self._mudar_status(request, queryset, StatusPartida.FINALIZADA)
-
-    @admin.action(description="Cancelar partidas selecionadas", permissions=["change"])
+    @admin.action(description="Cancelar partidas (reembolsa todos os inscritos)", permissions=["change"])
     def cancelar_partidas(self, request: HttpRequest, queryset: QuerySet) -> None:
-        self._mudar_status(request, queryset, StatusPartida.CANCELADA)
-        if Booking.objects.filter(
-            open_match__in=queryset, status_pagamento=StatusPagamento.PAGO
-        ).exists():
-            self.message_user(
-                request,
-                "Há inscrições pagas nas partidas canceladas: registre os reembolsos em Inscrições.",
-                messages.WARNING,
-            )
-
-    def _mudar_status(self, request: HttpRequest, queryset: QuerySet, status: str) -> None:
-        """Altera o status partida a partida, via ``save()``, informando falhas."""
-        alteradas = 0
+        canceladas = reembolsados = 0
         for partida in queryset:
-            if partida.status == status:
-                continue
-            partida.status = status
             try:
-                partida.save()
-                alteradas += 1
+                reembolsados += servico_partidas.cancelar_partida(partida, MotivoCancelamento.ARENA)
+                canceladas += 1
             except ValidationError as erro:
                 self.message_user(request, f"{partida}: {' '.join(erro.messages)}", messages.ERROR)
-        if alteradas:
+        if canceladas:
             self.message_user(
                 request,
-                f"{alteradas} partida(s) marcada(s) como {StatusPartida(status).label}.",
+                f"{canceladas} partida(s) cancelada(s); {reembolsados} jogador(es) reembolsado(s).",
                 messages.SUCCESS,
             )
 
 
 @admin.register(Booking)
-class BookingAdmin(EscopoGestorAdmin):
-    """Inscrições de jogadores, com controle manual de pagamento (MVP)."""
+class BookingAdmin(SomenteLeituraAdmin):
+    """Inscrições de jogadores (somente leitura: mudam pelo checkout e pelos cancelamentos)."""
 
     list_display = (
         "player",
         "partida",
         "arena",
-        "status_pagamento_selo",
+        "posicao",
+        "status_selo",
         "valor",
         "data_inscricao",
     )
     list_filter = (
-        "status_pagamento",
+        "status",
+        "posicao",
+        "metodo_pagamento",
         ("open_match__time_slot__court__arena", admin.RelatedOnlyFieldListFilter),
     )
     search_fields = (
@@ -631,22 +698,19 @@ class BookingAdmin(EscopoGestorAdmin):
     )
     list_select_related = ("player", "open_match__time_slot__court__arena")
     date_hierarchy = "data_inscricao"
-    actions = ("marcar_como_pago", "marcar_como_reembolsado")
-    fields = ("open_match", "player", "status_pagamento", "data_inscricao")
-
-    def get_readonly_fields(self, request: HttpRequest, obj: Booking | None = None) -> tuple[str, ...]:
-        # Partida e jogador não mudam depois da inscrição (regra do modelo).
-        return ("open_match", "player") if obj else ()
-
-    def formfield_for_foreignkey(
-        self, db_field: models.ForeignKey, request: HttpRequest, **kwargs: Any
-    ) -> Field | None:
-        campo = super().formfield_for_foreignkey(db_field, request, **kwargs)
-        if db_field.name == "open_match" and campo is not None:
-            campo.queryset = (
-                campo.queryset.filter(status=StatusPartida.ABERTA).futuras().com_relacionados()
-            )
-        return campo
+    fields = (
+        "open_match",
+        "player",
+        "posicao",
+        "status",
+        "metodo_pagamento",
+        ("valor_vaga", "valor_taxa", "valor_acrescimo"),
+        "data_inscricao",
+        "reservada_ate",
+        "confirmada_em",
+        "cancelada_em",
+        "repasse_solicitado_em",
+    )
 
     @admin.display(description="partida", ordering="open_match__time_slot__data")
     def partida(self, obj: Booking) -> str:
@@ -657,37 +721,133 @@ class BookingAdmin(EscopoGestorAdmin):
     def arena(self, obj: Booking) -> Arena:
         return obj.open_match.time_slot.court.arena
 
-    @admin.display(description="pagamento", ordering="status_pagamento")
-    def status_pagamento_selo(self, obj: Booking) -> SafeString:
-        return _selo(obj.status_pagamento, obj.get_status_pagamento_display())
+    @admin.display(description="status", ordering="status")
+    def status_selo(self, obj: Booking) -> SafeString:
+        return _selo(obj.status, obj.get_status_display())
 
     @admin.display(description="valor", ordering="valor_vaga")
     def valor(self, obj: Booking) -> str:
         return formatar_brl(obj.valor_total)
 
-    @admin.action(description="Marcar como pago", permissions=["change"])
-    def marcar_como_pago(self, request: HttpRequest, queryset: QuerySet) -> None:
-        self._mudar_pagamento(request, queryset, StatusPagamento.PAGO)
 
-    @admin.action(description="Marcar como reembolsado (libera a vaga)", permissions=["change"])
-    def marcar_como_reembolsado(self, request: HttpRequest, queryset: QuerySet) -> None:
-        self._mudar_pagamento(request, queryset, StatusPagamento.REEMBOLSADO)
+@admin.register(WaitlistEntry)
+class WaitlistEntryAdmin(EscopoGestorAdmin):
+    """Lista de espera das partidas."""
 
-    def _mudar_pagamento(self, request: HttpRequest, queryset: QuerySet, status: str) -> None:
-        """Altera via ``save()`` (e não ``QuerySet.update()``) para recalcular as vagas."""
-        alteradas = 0
-        for inscricao in queryset.select_related("open_match"):
-            if inscricao.status_pagamento == status:
-                continue
-            inscricao.status_pagamento = status
-            try:
-                inscricao.save()
-                alteradas += 1
-            except ValidationError as erro:
-                self.message_user(request, f"{inscricao}: {' '.join(erro.messages)}", messages.ERROR)
-        if alteradas:
-            self.message_user(
-                request,
-                f"{alteradas} inscrição(ões) marcada(s) como {StatusPagamento(status).label}.",
-                messages.SUCCESS,
-            )
+    list_display = ("jogador", "partida", "posicao", "created_at", "notificado_em")
+    list_select_related = ("jogador", "partida__time_slot__court")
+    search_fields = ("jogador__username", "jogador__first_name", "jogador__last_name")
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+
+# --- Pagamentos e razão ------------------------------------------------------
+
+
+def _data_hora(valor: Any) -> str:
+    return date_format(timezone.localtime(valor), "d/m/Y H:i") if valor else "—"
+
+
+@admin.register(Payment)
+class PaymentAdmin(SomenteLeituraAdmin):
+    """Cobranças das inscrições (gateway ou crédito)."""
+
+    list_display = ("criado", "jogador", "metodo", "valor_formatado", "tarifa", "status_selo", "gateway")
+    list_filter = ("status", "metodo", "gateway")
+    search_fields = ("gateway_id", "booking__player__username", "booking__player__first_name")
+    list_select_related = ("booking__player",)
+    date_hierarchy = "created_at"
+    fields = (
+        "booking",
+        "metodo",
+        "status",
+        "valor",
+        "tarifa_gateway",
+        "gateway",
+        "gateway_id",
+        "pix_copia_e_cola",
+        "expira_em",
+        "aprovado_em",
+        "estornado_em",
+        "resposta_gateway",
+        "created_at",
+    )
+
+    @admin.display(description="criado em", ordering="created_at")
+    def criado(self, obj: Payment) -> str:
+        return _data_hora(obj.created_at)
+
+    @admin.display(description="jogador", ordering="booking__player__first_name")
+    def jogador(self, obj: Payment) -> CustomUser:
+        return obj.booking.player
+
+    @admin.display(description="valor", ordering="valor")
+    def valor_formatado(self, obj: Payment) -> str:
+        return formatar_brl(obj.valor)
+
+    @admin.display(description="tarifa", ordering="tarifa_gateway")
+    def tarifa(self, obj: Payment) -> str:
+        return formatar_brl(obj.tarifa_gateway)
+
+    @admin.display(description="status", ordering="status")
+    def status_selo(self, obj: Payment) -> SafeString:
+        return _selo(obj.status, obj.get_status_display())
+
+
+@admin.register(LedgerAccount)
+class LedgerAccountAdmin(SomenteLeituraAdmin):
+    """Carteiras do razão, com o saldo (soma dos lançamentos)."""
+
+    list_display = ("__str__", "tipo", "saldo")
+    list_filter = ("tipo",)
+    search_fields = ("arena__nome", "jogador__username", "jogador__first_name")
+    list_select_related = ("arena", "jogador")
+
+    @admin.display(description="saldo")
+    def saldo(self, obj: LedgerAccount) -> str:
+        return formatar_brl(razao.saldo(obj.lancamentos.all()))
+
+
+@admin.register(LedgerEntry)
+class LedgerEntryAdmin(SomenteLeituraAdmin):
+    """Lançamentos imutáveis do razão contábil."""
+
+    list_display = ("criado", "conta", "tipo", "valor_formatado", "descricao", "disponivel")
+    list_filter = ("tipo", "conta__tipo")
+    search_fields = ("descricao", "conta__arena__nome", "conta__jogador__username")
+    list_select_related = ("conta__arena", "conta__jogador")
+    date_hierarchy = "created_at"
+
+    @admin.display(description="criado em", ordering="created_at")
+    def criado(self, obj: LedgerEntry) -> str:
+        return _data_hora(obj.created_at)
+
+    @admin.display(description="valor", ordering="valor")
+    def valor_formatado(self, obj: LedgerEntry) -> str:
+        return formatar_brl(obj.valor)
+
+    @admin.display(description="disponível em", ordering="disponivel_em")
+    def disponivel(self, obj: LedgerEntry) -> str:
+        return _data_hora(obj.disponivel_em)
+
+
+@admin.register(Payout)
+class PayoutAdmin(SomenteLeituraAdmin):
+    """Repasses às arenas."""
+
+    list_display = ("criado", "arena", "valor_formatado", "status", "referencia")
+    list_filter = ("status", ("arena", admin.RelatedOnlyFieldListFilter))
+    list_select_related = ("arena",)
+    date_hierarchy = "created_at"
+
+    @admin.display(description="criado em", ordering="created_at")
+    def criado(self, obj: Payout) -> str:
+        return _data_hora(obj.created_at)
+
+    @admin.display(description="valor", ordering="valor")
+    def valor_formatado(self, obj: Payout) -> str:
+        return formatar_brl(obj.valor)

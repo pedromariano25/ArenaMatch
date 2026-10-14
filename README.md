@@ -20,9 +20,30 @@ porque horários que ficariam vazios são vendidos vaga a vaga.
 
 A frente B2B é o **Portal do Gestor (ArenaManager)**, em `/manager/`. A frente
 B2C tem uma **vitrine web** e **APIs REST** para o app mobile. O **Django Admin**
-fica como back-office interno da equipe da plataforma. O pagamento é registrado
-manualmente (o gestor confirma no Financeiro), e a integração com um gateway fica
-para uma etapa futura.
+fica como back-office interno da equipe da plataforma.
+
+O pagamento acontece **100% dentro do app** (modelo de take rate): o jogador paga a
+vaga com Pix, cartão ou crédito, o ArenaMatch fica com a taxa de serviço e a parte
+da quadra vai para a carteira da arena, liberada no dia seguinte ao jogo.
+
+## Motor financeiro
+
+| Regra | Como funciona |
+| --- | --- |
+| Preço da vaga | Aluguel total ÷ vagas de linha (goleiro não paga) + taxa de serviço de 15% sobre a parte da quadra, com mínimo de R$ 2,00 (contrato de cada arena) |
+| Cartão | 5% a mais que o Pix, para cobrir a tarifa da operadora |
+| Reserva | Ao iniciar o checkout, a vaga fica segura por 10 minutos; sem pagamento, ela volta para a partida |
+| Cancelamento | Até 24h antes do jogo, crédito integral na carteira do jogador; depois disso, o jogador pode repassar a vaga para a lista de espera e recebe crédito se alguém assumir |
+| Mínimo de jogadores | Cada arena define o percentual (padrão 70%) e o prazo (padrão 3h antes); sem o mínimo, a partida é cancelada e todos são reembolsados |
+| Razão contábil | Toda movimentação vira um lançamento imutável; o saldo é a soma dos lançamentos. A arena vê o saldo disponível, a liberar e os repasses |
+| Repasse | O valor da quadra fica retido até o dia seguinte à partida e então é transferido à arena |
+
+O provedor de pagamentos fica atrás da interface `Gateway` (`arena/pagamentos.py`).
+Em desenvolvimento roda o `MockGateway`: o cartão é aprovado na hora e o Pix fica
+pendente até o jogador clicar em "Simular pagamento aprovado". Ele se recusa a rodar
+fora do ambiente de desenvolvimento. Para usar um gateway real (Mercado Pago,
+Pagar.me, Asaas...), implemente a interface e aponte `ARENAMATCH_GATEWAY_PAGAMENTO`
+para a classe. As notificações (webhooks) chegam em `/pagamentos/webhook/`.
 
 ## Stack
 
@@ -106,6 +127,10 @@ Sem os dados de demonstração, crie um administrador com `python manage.py crea
 | `DJANGO_DEBUG` | Não | `False` | Ative (`True`) apenas em desenvolvimento. |
 | `DJANGO_ALLOWED_HOSTS` | Não | vazio | Hosts aceitos, separados por vírgula. |
 | `DATABASE_URL` | Sim | — | Conexão com o PostgreSQL (`postgres://usuario:senha@host:porta/banco`). O usuário precisa de `CREATEDB` para os testes. |
+| `ARENAMATCH_GATEWAY_PAGAMENTO` | Não | `arena.pagamentos.MockGateway` | Classe do gateway de pagamentos. |
+| `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO` | Não | igual a `DJANGO_DEBUG` | Libera o gateway simulado (desenvolvimento, testes e CI). |
+| `ARENAMATCH_URL_BASE` | Não | `http://127.0.0.1:8000` | Endereço público usado nos links dos e-mails. |
+| `DJANGO_EMAIL_BACKEND` | Não | console | Backend de e-mail (em produção, SMTP). |
 
 ### Rotinas automáticas
 
@@ -128,9 +153,13 @@ paginadas (`?page=`), com 20 itens por página.
 | --- | --- | --- |
 | GET | `/api/partidas/` | Partidas abertas que ainda não começaram. Filtros: `nivel`, `piso`, `arena` (slug), `data`, `de`, `ate` |
 | GET | `/api/partidas/{id}/` | Detalhes, com os jogadores inscritos |
-| POST | `/api/partidas/{id}/inscricoes/` | Inscreve o jogador autenticado |
+| POST | `/api/partidas/{id}/inscricoes/` | Checkout: `posicao` (`linha`/`goleiro`) e `metodo_pagamento` (`pix`/`cartao`/`credito`) |
+| POST, DELETE | `/api/partidas/{id}/lista-de-espera/` | Entra ou sai da lista de espera |
 | GET | `/api/minhas-inscricoes/` | Inscrições do jogador autenticado |
-| GET, DELETE | `/api/minhas-inscricoes/{id}/` | Detalha ou cancela (só se o pagamento estiver pendente) |
+| GET, DELETE | `/api/minhas-inscricoes/{id}/` | Detalha ou cancela (reserva, ou vaga paga até 24h antes, com crédito) |
+| POST | `/api/minhas-inscricoes/{id}/repassar/` | Repassa a vaga para a lista de espera (a menos de 24h) |
+| POST | `/api/minhas-inscricoes/{id}/simular-pagamento/` | Aprova o Pix pendente (só com o gateway simulado) |
+| GET | `/api/carteira/` | Crédito do jogador e movimentações |
 | GET | `/api/arenas/` | Arenas e quadras |
 | POST | `/api/auth/cadastro/` | Cria uma conta de jogador e devolve o token |
 | POST | `/api/auth/token/` | Troca usuário e senha por um token |
@@ -158,8 +187,13 @@ python manage.py test arena
 │   ├── tests/              # Testes de modelos, portal, admin, API, vitrine e populate_db
 │   ├── admin.py            # Back-office da plataforma (Django Admin)
 │   ├── agendador.py        # Monta o agendador (APScheduler) com as rotinas registradas
+│   ├── checkout.py         # Inscrição: reserva, pagamento, expiração, cancelamento, repasse, lista de espera
 │   ├── gestao.py           # Cálculos do portal: KPIs, grade da agenda, financeiro
 │   ├── models.py           # Entidades e regras de negócio
+│   ├── notificacoes.py     # E-mails aos jogadores (enviados depois do commit)
+│   ├── pagamentos.py       # Interface Gateway e o MockGateway de desenvolvimento
+│   ├── partidas.py         # Partida: cancelamento com reembolso, mínimo de jogadores, encerramento
+│   ├── razao.py            # Razão contábil: carteiras, lançamentos, saldos e repasses
 │   ├── rotinas.py          # Rotinas automáticas (@rotina) executadas pelo agendador
 │   ├── urls_gestor.py      # Rotas do Portal do Gestor (/manager/)
 │   ├── validators.py       # CPF, CNPJ (inclusive alfanumérico) e telefone
@@ -174,7 +208,7 @@ python manage.py test arena
 
 O MVP (modelagem, painel B2B, APIs e vitrine) está implementado. Próximos passos:
 
-1. **Pagamentos:** integração com gateway (Pix) e confirmação automática.
+1. **Pagamentos:** trocar o `MockGateway` por um gateway real com split (Mercado Pago, Pagar.me ou Asaas).
 2. **Agenda recorrente:** gerar horários de mensalistas e ociosos em lote.
 3. **Notificações:** e-mail e WhatsApp na inscrição e no cancelamento de partidas.
 4. **Produção:** build do Tailwind (sem CDN), arquivos estáticos e deploy.

@@ -34,14 +34,14 @@
       <div class="painel-barra"><div style="width: {% widthratio painel.vagas_ocupadas painel.vagas_totais|default:1 100 %}%"></div></div>
     </div>
     <div class="painel-kpi">
-      <span class="rotulo">Receita confirmada</span>
+      <span class="rotulo">Vendido (quadras)</span>
       <span class="valor">{{ painel.receita_paga|brl }}</span>
-      <span class="detalhe">inscrições pagas</span>
+      <span class="detalhe">vagas pagas pelo app</span>
     </div>
     <div class="painel-kpi">
-      <span class="rotulo">A receber</span>
+      <span class="rotulo">Em pagamento</span>
       <span class="valor">{{ painel.receita_pendente|brl }}</span>
-      <span class="detalhe">pagamentos pendentes</span>
+      <span class="detalhe">reservas aguardando o Pix</span>
     </div>
     <div class="painel-kpi oportunidade">
       <span class="rotulo">Horários ociosos</span>

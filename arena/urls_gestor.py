@@ -15,11 +15,11 @@ urlpatterns = [
     path("dashboard/", views.GestorDashboardView.as_view(), name="dashboard"),
     path("agenda/", views.GestorAgendaView.as_view(), name="agenda"),
     path("agenda/abrir-partida/", views.GestorAbrirPartidaView.as_view(), name="abrir_partida"),
-    path("financeiro/", views.GestorFinanceiroView.as_view(), name="financeiro"),
     path(
-        "financeiro/inscricoes/<uuid:pk>/pagamento/",
-        views.GestorPagamentoView.as_view(),
-        name="pagamento",
+        "partidas/<uuid:pk>/cancelar/",
+        views.GestorCancelarPartidaView.as_view(),
+        name="cancelar_partida",
     ),
+    path("financeiro/", views.GestorFinanceiroView.as_view(), name="financeiro"),
     path("configuracoes/", views.GestorConfiguracoesView.as_view(), name="configuracoes"),
 ]

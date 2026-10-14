@@ -7,7 +7,18 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 
-from ..models import STATUS_OCUPA_VAGA, Arena, Booking, Court, CustomUser, OpenMatch
+from ..models import (
+    Arena,
+    Booking,
+    Court,
+    CustomUser,
+    LedgerEntry,
+    MetodoPagamento,
+    OpenMatch,
+    Payment,
+    Posicao,
+    StatusPagamento,
+)
 
 
 class QuadraSerializer(serializers.ModelSerializer):
@@ -49,12 +60,13 @@ class PartidaSerializer(serializers.ModelSerializer):
     nivel_display = serializers.CharField(source="get_nivel_competitividade_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     vagas_ocupadas = serializers.IntegerField(read_only=True)
-    preco_final_jogador = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-        help_text="Valor cobrado do jogador: parte da quadra + taxa de conveniência.",
+    vagas_linha = serializers.IntegerField(read_only=True)
+    precos = serializers.SerializerMethodField(
+        help_text="Preço da vaga de linha no Pix (ou crédito) e no cartão; goleiro é grátis."
     )
+    minimo_jogadores = serializers.IntegerField(read_only=True)
+    jogadores_confirmados = serializers.IntegerField(read_only=True)
+    jogo_confirmado = serializers.BooleanField(read_only=True)
     aceita_inscricoes = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -70,9 +82,14 @@ class PartidaSerializer(serializers.ModelSerializer):
             "nivel_competitividade",
             "nivel_display",
             "vagas_totais",
+            "vagas_linha",
+            "vagas_goleiro",
             "vagas_disponiveis",
             "vagas_ocupadas",
-            "preco_final_jogador",
+            "precos",
+            "minimo_jogadores",
+            "jogadores_confirmados",
+            "jogo_confirmado",
             "status",
             "status_display",
             "aceita_inscricoes",
@@ -80,9 +97,17 @@ class PartidaSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "nivel_competitividade",
             "vagas_totais",
+            "vagas_goleiro",
             "vagas_disponiveis",
             "status",
         )
+
+    def get_precos(self, partida: OpenMatch) -> dict[str, str]:
+        return {
+            "linha_pix": str(partida.preco_final_jogador),
+            "linha_cartao": str(partida.preco_cartao),
+            "goleiro": "0.00",
+        }
 
 
 class PartidaDetalheSerializer(PartidaSerializer):
@@ -96,34 +121,81 @@ class PartidaDetalheSerializer(PartidaSerializer):
         fields = (*PartidaSerializer.Meta.fields, "jogadores")
 
     def get_jogadores(self, partida: OpenMatch) -> list[str]:
-        inscricoes = (
-            partida.inscricoes.filter(status_pagamento__in=STATUS_OCUPA_VAGA)
-            .select_related("player")
-            .order_by("data_inscricao")
-        )
+        inscricoes = partida.inscricoes.confirmadas().select_related("player").order_by("confirmada_em")
         return [inscricao.player.nome_publico for inscricao in inscricoes]
 
 
+class PagamentoSerializer(serializers.ModelSerializer):
+    """Cobrança da inscrição (o código Pix aparece enquanto o pagamento está pendente)."""
+
+    class Meta:
+        model = Payment
+        fields = ("id", "metodo", "status", "valor", "pix_copia_e_cola", "expira_em", "aprovado_em")
+        read_only_fields = fields
+
+
 class InscricaoSerializer(serializers.ModelSerializer):
-    """Inscrição do jogador autenticado. Status e data são definidos pelo sistema."""
+    """Inscrição do jogador autenticado. Status, valores e prazos vêm do checkout."""
 
     partida = PartidaSerializer(source="open_match", read_only=True)
-    status_pagamento_display = serializers.CharField(
-        source="get_status_pagamento_display", read_only=True
-    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    valor_total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    pagamento = serializers.SerializerMethodField()
     pode_cancelar = serializers.BooleanField(read_only=True)
+    pode_repassar = serializers.BooleanField(read_only=True)
+    em_repasse = serializers.BooleanField(read_only=True)
+    posicao = serializers.ChoiceField(choices=Posicao.choices, default=Posicao.LINHA)
+    metodo_pagamento = serializers.ChoiceField(
+        choices=[MetodoPagamento.PIX, MetodoPagamento.CARTAO, MetodoPagamento.CREDITO],
+        default=MetodoPagamento.PIX,
+        help_text="Ignorado na vaga de goleiro, que é gratuita.",
+    )
 
     class Meta:
         model = Booking
         fields = (
             "id",
             "partida",
-            "status_pagamento",
-            "status_pagamento_display",
+            "posicao",
+            "metodo_pagamento",
+            "status",
+            "status_display",
+            "valor_vaga",
+            "valor_taxa",
+            "valor_acrescimo",
+            "valor_total",
+            "reservada_ate",
             "data_inscricao",
+            "confirmada_em",
+            "pagamento",
             "pode_cancelar",
+            "pode_repassar",
+            "em_repasse",
         )
-        read_only_fields = ("status_pagamento", "data_inscricao")
+        read_only_fields = (
+            "status",
+            "valor_vaga",
+            "valor_taxa",
+            "valor_acrescimo",
+            "reservada_ate",
+            "data_inscricao",
+            "confirmada_em",
+        )
+
+    def get_pagamento(self, inscricao: Booking) -> dict | None:
+        pagamento = inscricao.pagamentos.exclude(status=StatusPagamento.CANCELADO).first()
+        return PagamentoSerializer(pagamento).data if pagamento else None
+
+
+class LancamentoSerializer(serializers.ModelSerializer):
+    """Movimentação da carteira de crédito do jogador."""
+
+    tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+
+    class Meta:
+        model = LedgerEntry
+        fields = ("id", "tipo", "tipo_display", "valor", "descricao", "created_at")
+        read_only_fields = fields
 
 
 class PerfilSerializer(serializers.ModelSerializer):

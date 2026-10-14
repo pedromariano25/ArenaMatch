@@ -9,7 +9,16 @@ from django.contrib.auth.forms import UserCreationForm
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from .models import Arena, Court, CustomUser, NivelCompetitividade, TipoPiso
+from .models import (
+    Arena,
+    Court,
+    CustomUser,
+    MetodoPagamento,
+    NivelCompetitividade,
+    OpenMatch,
+    Posicao,
+    TipoPiso,
+)
 
 
 class ConverterPartidaForm(forms.Form):
@@ -35,6 +44,13 @@ class ConverterPartidaForm(forms.Form):
         max_value=32767,
         required=False,
         help_text="Deixe em branco para usar a capacidade padrão de cada quadra.",
+    )
+    vagas_goleiro = forms.IntegerField(
+        label="Vagas de goleiro",
+        min_value=0,
+        max_value=32767,
+        required=False,
+        help_text="Goleiros não pagam. Em branco: 2 a partir de 8 jogadores.",
     )
 
 
@@ -137,6 +153,7 @@ class AbrirPartidaForm(forms.Form):
         localize=True,
     )
     vagas_totais = forms.IntegerField(label="Vagas", min_value=1, max_value=32767, required=False)
+    vagas_goleiro = forms.IntegerField(label="Goleiros", min_value=0, max_value=32767, required=False)
     nivel_competitividade = forms.ChoiceField(
         label="Nível", choices=NivelCompetitividade.choices, required=False
     )
@@ -154,7 +171,15 @@ class ArenaConfigForm(forms.ModelForm):
 
     class Meta:
         model = Arena
-        fields = ("nome", "telefone_contato", "endereco_completo", "hora_abertura", "hora_fechamento")
+        fields = (
+            "nome",
+            "telefone_contato",
+            "endereco_completo",
+            "hora_abertura",
+            "hora_fechamento",
+            "quorum_percentual",
+            "horas_prazo_quorum",
+        )
         widgets = {
             "hora_abertura": forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
             "hora_fechamento": forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
@@ -183,3 +208,42 @@ class QuadraForm(forms.ModelForm):
         if repetida:
             raise forms.ValidationError("Já existe uma quadra com este nome nesta arena.")
         return nome
+
+
+# --- Checkout (vitrine) --------------------------------------------------------
+
+
+class CheckoutForm(forms.Form):
+    """Escolha da vaga (linha ou goleiro) e da forma de pagamento."""
+
+    posicao = forms.ChoiceField(
+        label="Vaga", choices=Posicao.choices, initial=Posicao.LINHA, widget=forms.RadioSelect
+    )
+    metodo = forms.ChoiceField(
+        label="Pagamento",
+        choices=[
+            (MetodoPagamento.PIX, "Pix"),
+            (MetodoPagamento.CARTAO, "Cartão de crédito"),
+            (MetodoPagamento.CREDITO, "Crédito ArenaMatch"),
+        ],
+        initial=MetodoPagamento.PIX,
+        required=False,
+        widget=forms.RadioSelect,
+    )
+
+    def __init__(self, *args: Any, partida: OpenMatch, saldo: Decimal, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if not partida.vagas_goleiro:
+            self.fields["posicao"].choices = [(Posicao.LINHA, Posicao.LINHA.label)]
+        if saldo < partida.preco_final_jogador:
+            self.fields["metodo"].choices = [
+                opcao for opcao in self.fields["metodo"].choices if opcao[0] != MetodoPagamento.CREDITO
+            ]
+
+    def clean(self) -> dict[str, Any]:
+        dados = super().clean()
+        if dados.get("posicao") == Posicao.GOLEIRO:
+            dados["metodo"] = MetodoPagamento.GRATUITO
+        elif not dados.get("metodo"):
+            self.add_error("metodo", "Escolha a forma de pagamento.")
+        return dados

@@ -10,7 +10,7 @@
     <p class="mt-0.5 truncate text-sm text-slate-500">{{ horario.data|rotulo_dia }} · {{ horario.intervalo }} · {{ horario.court.nome_ou_numero }}</p>
   </div>
   <p class="hidden text-sm font-medium text-slate-900 sm:block">{{ inscricao.valor_total|brl }}</p>
-  <span class="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status_pagamento|classes_pagamento }}">{{ inscricao.get_status_pagamento_display }}</span>
+  <span class="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status|classes_inscricao }}">{% if inscricao.em_repasse %}Em repasse{% else %}{{ inscricao.get_status_display }}{% endif %}</span>
   {% icone "seta" "size-4 shrink-0 text-slate-300 transition group-hover:text-slate-500" %}
 </a>
 {% endwith %}

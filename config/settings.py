@@ -46,6 +46,28 @@ ALLOWED_HOSTS = [
 ]
 
 
+def _variavel_booleana(nome: str, padrao: bool) -> bool:
+    valor = os.environ.get(nome)
+    return padrao if valor is None else valor.strip().lower() in ('1', 'true', 'yes')
+
+
+# Pagamentos. O gateway simulado só é aceito onde for permitido (por padrão, em DEBUG),
+# para nunca aprovar vagas sem dinheiro de verdade em produção.
+ARENAMATCH_GATEWAY_PAGAMENTO = os.environ.get(
+    'ARENAMATCH_GATEWAY_PAGAMENTO', 'arena.pagamentos.MockGateway'
+)
+ARENAMATCH_PERMITIR_GATEWAY_SIMULADO = _variavel_booleana('ARENAMATCH_PERMITIR_GATEWAY_SIMULADO', DEBUG)
+
+# Endereço público do site, usado nos links dos e-mails.
+ARENAMATCH_URL_BASE = os.environ.get('ARENAMATCH_URL_BASE', 'http://127.0.0.1:8000')
+
+# E-mails: no console por padrão (desenvolvimento). Em produção, configure o SMTP.
+EMAIL_BACKEND = os.environ.get(
+    'DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'
+)
+DEFAULT_FROM_EMAIL = os.environ.get('DJANGO_DEFAULT_FROM_EMAIL', 'ArenaMatch <nao-responda@arenamatch.com.br>')
+
+
 # Application definition
 
 INSTALLED_APPS = [

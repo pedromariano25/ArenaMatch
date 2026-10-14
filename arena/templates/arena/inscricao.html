@@ -8,14 +8,22 @@
 {% with horario=partida.time_slot quadra=partida.time_slot.court arena=partida.time_slot.court.arena %}
 <div class="mx-auto max-w-lg px-4 py-10 sm:py-14">
   <div class="text-center">
-    {% if inscricao.ocupa_vaga %}
+    {% if inscricao.status == "confirmada" %}
       <span class="mx-auto grid size-12 place-items-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-inset ring-emerald-600/20">{% icone "check" "size-7" %}</span>
-      <h1 class="mt-4 text-2xl font-semibold tracking-tight text-slate-900">Vaga garantida!</h1>
-      <p class="mt-1 text-slate-500">Mostre este comprovante na recepção da arena.</p>
+      <h1 class="mt-4 text-2xl font-semibold tracking-tight text-slate-900">{% if inscricao.em_repasse %}Vaga em repasse{% else %}Vaga garantida!{% endif %}</h1>
+      <p class="mt-1 text-slate-500">{% if inscricao.em_repasse %}Se alguém da lista de espera assumir, você recebe crédito integral.{% else %}Mostre este comprovante na recepção da arena.{% endif %}</p>
+    {% elif inscricao.status == "aguardando_pagamento" and not inscricao.reserva_vencida %}
+      <span class="mx-auto grid size-12 place-items-center rounded-full bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-600/20">{% icone "relogio" "size-7" %}</span>
+      <h1 class="mt-4 text-2xl font-semibold tracking-tight text-slate-900">Aguardando pagamento</h1>
+      <p class="mt-1 text-slate-500">Sua vaga está reservada até {{ inscricao.reservada_ate|time:"H:i" }}.</p>
     {% else %}
       <span class="mx-auto grid size-12 place-items-center rounded-full bg-slate-100 text-slate-500">{% icone "info" "size-7" %}</span>
-      <h1 class="mt-4 text-2xl font-semibold tracking-tight text-slate-900">Inscrição {{ inscricao.get_status_pagamento_display|lower }}</h1>
-      <p class="mt-1 text-slate-500">Esta inscrição não ocupa mais uma vaga na partida.</p>
+      <h1 class="mt-4 text-2xl font-semibold tracking-tight text-slate-900">Inscrição {% if inscricao.reserva_vencida %}expirada{% else %}{{ inscricao.get_status_display|lower }}{% endif %}</h1>
+      <p class="mt-1 text-slate-500">
+        {% if inscricao.status == "reembolsada" %}A partida foi cancelada e o valor foi devolvido integralmente.
+        {% elif inscricao.status == "cancelada" and inscricao.confirmada_em and not inscricao.gratuita %}O valor voltou como crédito na sua carteira.
+        {% else %}Esta inscrição não ocupa mais uma vaga na partida.{% endif %}
+      </p>
     {% endif %}
   </div>
 
@@ -39,30 +47,53 @@
       <div><dt class="text-slate-500">Data</dt><dd class="mt-0.5 font-medium text-slate-900">{{ horario.data|rotulo_dia }}, {{ horario.data|date:"d/m/Y" }}</dd></div>
       <div><dt class="text-slate-500">Horário</dt><dd class="mt-0.5 font-medium text-slate-900">{{ horario.intervalo }}</dd></div>
       <div><dt class="text-slate-500">Jogador</dt><dd class="mt-0.5 font-medium text-slate-900">{{ inscricao.player.get_full_name|default:inscricao.player.username }}</dd></div>
-      <div><dt class="text-slate-500">Nível</dt><dd class="mt-0.5 font-medium text-slate-900">{{ partida.get_nivel_competitividade_display }}</dd></div>
-      <div><dt class="text-slate-500">Valor</dt><dd class="mt-0.5 font-medium text-slate-900">{{ inscricao.valor_total|brl }}</dd></div>
+      <div><dt class="text-slate-500">Vaga</dt><dd class="mt-0.5 font-medium text-slate-900">{{ inscricao.get_posicao_display }} · {{ partida.get_nivel_competitividade_display }}</dd></div>
+      <div><dt class="text-slate-500">Valor</dt><dd class="mt-0.5 font-medium text-slate-900">{% if inscricao.gratuita %}Grátis (goleiro){% else %}{{ inscricao.valor_total|brl }}{% endif %}</dd></div>
       <div>
-        <dt class="text-slate-500">Pagamento</dt>
-        <dd class="mt-1"><span class="inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status_pagamento|classes_pagamento }}">{{ inscricao.get_status_pagamento_display }}</span></dd>
+        <dt class="text-slate-500">Status</dt>
+        <dd class="mt-1"><span class="inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status|classes_inscricao }}">{% if inscricao.em_repasse %}Em repasse{% else %}{{ inscricao.get_status_display }}{% endif %}</span></dd>
       </div>
+      {% if not inscricao.gratuita %}
+        <div class="col-span-2"><dt class="text-slate-500">Pagamento</dt><dd class="mt-0.5 font-medium text-slate-900">{{ inscricao.get_metodo_pagamento_display }}{% if inscricao.valor_acrescimo %} (inclui {{ inscricao.valor_acrescimo|brl }} de acréscimo do cartão){% endif %}</dd></div>
+      {% endif %}
       <div class="col-span-2"><dt class="text-slate-500">Endereço</dt><dd class="mt-0.5 font-medium text-slate-900">{{ arena.endereco_completo }}</dd></div>
     </dl>
 
-    <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-5 sm:flex-row">
-      <a href="{% link_google_agenda partida %}" target="_blank" rel="noopener" class="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">{% icone "calendario" "size-4" %} Adicionar à agenda</a>
-      <a href="{{ arena.endereco_completo|link_maps }}" target="_blank" rel="noopener" class="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">{% icone "pin" "size-4 text-slate-500" %} Como chegar</a>
-    </div>
+    {% if inscricao.status == "aguardando_pagamento" and not inscricao.reserva_vencida %}
+      <div class="border-t border-slate-200 bg-slate-50 px-6 py-5">
+        <a href="{% url 'arena:pagamento' inscricao.pk %}" class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">Concluir pagamento {% icone "seta" "size-4" %}</a>
+      </div>
+    {% elif inscricao.status == "confirmada" %}
+      <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-5 sm:flex-row">
+        <a href="{% link_google_agenda partida %}" target="_blank" rel="noopener" class="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">{% icone "calendario" "size-4" %} Adicionar à agenda</a>
+        <a href="{{ arena.endereco_completo|link_maps }}" target="_blank" rel="noopener" class="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">{% icone "pin" "size-4 text-slate-500" %} Como chegar</a>
+      </div>
+    {% endif %}
   </div>
 
   <div class="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
     <a href="{% url 'arena:minhas_inscricoes' %}" class="text-sm font-medium text-emerald-700 transition hover:text-emerald-800">Ver todas as minhas inscrições</a>
     {% if inscricao.pode_cancelar %}
-      <form method="post" action="{% url 'arena:cancelar_inscricao' inscricao.pk %}" onsubmit="return confirm('Cancelar esta inscrição? A vaga volta para a partida.');">
+      <form method="post" action="{% url 'arena:cancelar_inscricao' inscricao.pk %}" onsubmit="return confirm('{% if inscricao.status == "confirmada" and not inscricao.gratuita %}Cancelar? O valor volta como crédito na sua carteira.{% else %}Cancelar esta inscrição?{% endif %}');">
         {% csrf_token %}
-        <button type="submit" class="text-sm font-medium text-red-600 transition hover:text-red-700">Cancelar inscrição</button>
+        <button type="submit" class="text-sm font-medium text-red-600 transition hover:text-red-700">{% if inscricao.status == "aguardando_pagamento" %}Cancelar reserva{% else %}Cancelar inscrição{% endif %}</button>
+      </form>
+    {% elif inscricao.pode_repassar %}
+      <form method="post" action="{% url 'arena:repassar_vaga' inscricao.pk %}" onsubmit="return confirm('Liberar a vaga para a lista de espera? Se alguém assumir, você recebe crédito integral.');">
+        {% csrf_token %}
+        <button type="submit" class="text-sm font-medium text-amber-700 transition hover:text-amber-800">Não vou poder ir: repassar vaga</button>
+      </form>
+    {% elif inscricao.em_repasse %}
+      <form method="post" action="{% url 'arena:repassar_vaga' inscricao.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="desfazer">
+        <button type="submit" class="text-sm font-medium text-slate-600 transition hover:text-slate-900">Desfazer repasse</button>
       </form>
     {% endif %}
   </div>
+  {% if inscricao.status == "confirmada" and not inscricao.gratuita and not inscricao.em_repasse %}
+    <p class="mt-4 text-center text-xs text-slate-500">Cancelamento com crédito integral até {{ inscricao.prazo_credito|date:"d/m \à\s H:i" }}. Depois disso, você pode repassar a vaga para a lista de espera.</p>
+  {% endif %}
 </div>
 {% endwith %}
 {% endwith %}

@@ -14,6 +14,9 @@
       </span>
       <span class="rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ partida.nivel_competitividade|classes_nivel }}">Nível {{ partida.get_nivel_competitividade_display }}</span>
       <span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ partida.get_status_display }}</span>
+      {% if partida.jogo_confirmado %}
+        <span class="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Jogo confirmado</span>
+      {% endif %}
     </div>
     <h1 class="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{{ arena.nome }}</h1>
     <p class="mt-2 flex items-center gap-1.5 text-slate-500">{% icone "pin" "size-5 shrink-0 text-slate-400" %} {{ quadra.nome_ou_numero }} · {{ arena.endereco_completo|local_resumido }}</p>
@@ -28,7 +31,7 @@
       </div>
       <div class="flex items-center gap-3 rounded-lg border border-slate-200 px-4 py-2.5">
         {% icone "jogadores" "size-5 text-emerald-600" %}
-        <div><dt class="text-xs text-slate-500">Formato</dt><dd class="text-sm font-semibold text-slate-900">{{ partida.vagas_totais }} jogadores</dd></div>
+        <div><dt class="text-xs text-slate-500">Formato</dt><dd class="text-sm font-semibold text-slate-900">{{ partida.vagas_totais }} jogadores{% if partida.vagas_goleiro %} ({{ partida.vagas_goleiro }} goleiros){% endif %}</dd></div>
       </div>
     </dl>
   </div>
@@ -39,25 +42,47 @@
     <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div class="flex items-center justify-between gap-4">
         <h2 class="text-base font-semibold text-slate-900">Quem já confirmou</h2>
-        <span class="text-sm text-slate-500 tabular-nums">{{ partida.vagas_ocupadas }}/{{ partida.vagas_totais }}</span>
+        <span class="text-sm text-slate-500 tabular-nums">{{ partida.jogadores_confirmados }}/{{ partida.vagas_totais }}</span>
       </div>
-      {% if not jogadores %}
-        <p class="mt-2 text-sm text-slate-500">Ninguém confirmou ainda. Seja o primeiro!</p>
+      {% if partida.jogo_confirmado %}
+        <p class="mt-2 text-sm text-emerald-700">O mínimo de {{ partida.minimo_jogadores }} jogadores foi atingido: o jogo vai acontecer.</p>
+      {% else %}
+        <p class="mt-2 text-sm text-slate-500">Faltam {{ partida.faltam_para_confirmar }} para confirmar o jogo (mínimo de {{ partida.minimo_jogadores }} até {{ partida.prazo_quorum|date:"d/m H:i" }}). Se não atingir, todos são reembolsados.</p>
       {% endif %}
-      <ul class="mt-5 grid grid-cols-4 gap-4 sm:grid-cols-6">
-        {% for jogador in jogadores %}
+
+      <h3 class="mt-5 text-xs font-medium uppercase tracking-wide text-slate-500">Linha</h3>
+      <ul class="mt-3 grid grid-cols-4 gap-4 sm:grid-cols-6">
+        {% for jogador in linha %}
           <li class="flex flex-col items-center gap-1.5 text-center">
             <span class="grid size-11 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">{{ jogador.iniciais }}</span>
             <span class="w-full truncate text-xs text-slate-700">{{ jogador.nome_publico }}</span>
           </li>
         {% endfor %}
-        {% for vaga in vagas_livres %}
+        {% for vaga in vagas_livres_linha %}
           <li class="flex flex-col items-center gap-1.5 text-center">
             <span class="grid size-11 place-items-center rounded-full border border-dashed border-slate-300 text-slate-300">{% icone "mais" "size-4" %}</span>
             <span class="text-xs text-slate-400">Vaga livre</span>
           </li>
         {% endfor %}
       </ul>
+
+      {% if partida.vagas_goleiro %}
+        <h3 class="mt-6 text-xs font-medium uppercase tracking-wide text-slate-500">Goleiros (não pagam)</h3>
+        <ul class="mt-3 grid grid-cols-4 gap-4 sm:grid-cols-6">
+          {% for jogador in goleiros %}
+            <li class="flex flex-col items-center gap-1.5 text-center">
+              <span class="grid size-11 place-items-center rounded-full bg-sky-50 text-sm font-semibold text-sky-700 ring-1 ring-inset ring-sky-200">{{ jogador.iniciais }}</span>
+              <span class="w-full truncate text-xs text-slate-700">{{ jogador.nome_publico }}</span>
+            </li>
+          {% endfor %}
+          {% for vaga in vagas_livres_goleiro %}
+            <li class="flex flex-col items-center gap-1.5 text-center">
+              <span class="grid size-11 place-items-center rounded-full border border-dashed border-sky-300 text-sky-300">{% icone "mais" "size-4" %}</span>
+              <span class="text-xs text-slate-400">Goleiro</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
     </section>
 
     <section class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -71,7 +96,7 @@
       <ul class="mt-5 space-y-2.5 text-sm text-slate-600">
         <li class="flex gap-2.5">{% icone "check" "size-5 shrink-0 text-emerald-600" %} Chegue 15 minutos antes para o aquecimento e a divisão dos times.</li>
         <li class="flex gap-2.5">{% icone "check" "size-5 shrink-0 text-emerald-600" %} Use calçado adequado ao piso ({{ quadra.get_tipo_piso_display|lower }}).</li>
-        <li class="flex gap-2.5">{% icone "check" "size-5 shrink-0 text-emerald-600" %} O pagamento é feito direto na arena (Pix ou balcão) até o início da partida.</li>
+        <li class="flex gap-2.5">{% icone "check" "size-5 shrink-0 text-emerald-600" %} Pagamento pelo app, com Pix ou cartão. A vaga de goleiro é gratuita.</li>
       </ul>
     </section>
 
@@ -79,22 +104,20 @@
       <h2 class="text-base font-semibold text-slate-900">Local</h2>
       <p class="mt-2 text-sm text-slate-700">{{ arena.endereco_completo }}</p>
       <p class="mt-1 text-sm text-slate-500">Funcionamento: {{ arena.hora_abertura|time:"H:i" }} às {{ arena.hora_fechamento|time:"H:i" }}</p>
-      <div class="mt-4 flex flex-wrap gap-3">
-        <a href="{{ arena.endereco_completo|link_maps }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">{% icone "pin" "size-4 text-slate-500" %} Abrir no Google Maps</a>
-        <a href="{{ arena.telefone_contato|link_whatsapp }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">{% icone "conversa" "size-4 text-slate-500" %} Falar com a arena</a>
-      </div>
+      <a href="{{ arena.endereco_completo|link_maps }}" target="_blank" rel="noopener" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">{% icone "pin" "size-4 text-slate-500" %} Abrir no Google Maps</a>
     </section>
   </div>
 
   <aside class="lg:sticky lg:top-24 lg:self-start">
     <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <p class="text-sm text-slate-500">Valor por jogador</p>
+      <p class="text-sm text-slate-500">Vaga de linha</p>
       <p class="mt-1 text-3xl font-semibold tracking-tight text-slate-900">{{ partida.preco_final_jogador|brl }}</p>
+      <p class="mt-1 text-xs text-slate-500">no Pix · {{ partida.preco_cartao|brl }} no cartão{% if partida.vagas_goleiro %} · goleiro grátis{% endif %}</p>
 
       <div class="mt-5">
         <div class="flex justify-between text-sm">
-          <span class="text-slate-600">{{ partida.vagas_ocupadas }} confirmado{{ partida.vagas_ocupadas|pluralize }}</span>
-          <span class="font-medium text-slate-900">{{ partida.vagas_disponiveis }} vaga{{ partida.vagas_disponiveis|pluralize }}</span>
+          <span class="text-slate-600">{{ partida.jogadores_confirmados }} confirmado{{ partida.jogadores_confirmados|pluralize }}</span>
+          <span class="font-medium text-slate-900">{{ livres_linha }} de linha{% if partida.vagas_goleiro %} · {{ livres_goleiro }} de goleiro{% endif %}</span>
         </div>
         <div class="mt-2 h-2 rounded-full bg-emerald-100" role="img" aria-label="{{ partida.percentual_ocupado }}% das vagas preenchidas">
           <div class="h-2 rounded-full bg-emerald-600" style="width: {{ partida.percentual_ocupado }}%"></div>
@@ -104,16 +127,21 @@
       <div class="mt-6">
         {% if minha_inscricao %}
           <div class="rounded-lg bg-emerald-50 p-4 text-emerald-900 ring-1 ring-inset ring-emerald-600/20">
-            <p class="flex items-center gap-2 font-semibold">{% icone "check" "size-5 text-emerald-600" %} Você está dentro!</p>
-            <p class="mt-1 text-sm">Pagamento {{ minha_inscricao.get_status_pagamento_display|lower }}.</p>
+            {% if minha_inscricao.status == "confirmada" %}
+              <p class="flex items-center gap-2 font-semibold">{% icone "check" "size-5 text-emerald-600" %} Você está dentro!</p>
+              <p class="mt-1 text-sm">{% if minha_inscricao.em_repasse %}Sua vaga está em repasse para a lista de espera.{% else %}Vaga de {{ minha_inscricao.get_posicao_display|lower }} confirmada.{% endif %}</p>
+            {% else %}
+              <p class="flex items-center gap-2 font-semibold">{% icone "relogio" "size-5 text-amber-600" %} Vaga reservada</p>
+              <p class="mt-1 text-sm">Conclua o pagamento até {{ minha_inscricao.reservada_ate|time:"H:i" }}.</p>
+            {% endif %}
             <a href="{% url 'arena:inscricao' minha_inscricao.pk %}" class="mt-3 inline-flex text-sm font-semibold underline underline-offset-2">Ver comprovante</a>
           </div>
         {% elif partida.aceita_inscricoes %}
           {% if user.is_authenticated and not user.is_player %}
             <p class="rounded-lg bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-inset ring-amber-600/20">Sua conta não é de jogador. Use uma conta de jogador para reservar vagas.</p>
           {% else %}
-            <a href="{% url 'arena:reservar' partida.pk %}" class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">
-              Reservar minha vaga {% icone "seta" "size-4" %}
+            <a href="{% url 'arena:checkout' partida.pk %}" class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">
+              Garantir vaga {% icone "seta" "size-4" %}
             </a>
             {% if not user.is_authenticated %}
               <p class="mt-3 text-center text-xs text-slate-500">No próximo passo você entra ou cria sua conta.</p>
@@ -121,15 +149,28 @@
           {% endif %}
         {% elif partida.status == "lotada" %}
           <button type="button" disabled class="w-full cursor-not-allowed rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-400">Partida lotada</button>
-          <p class="mt-3 text-center text-xs text-slate-500">Se alguém desistir, a vaga volta para cá.</p>
+          {% if user.is_authenticated and user.is_player %}
+            <form method="post" action="{% url 'arena:lista_de_espera' partida.pk %}" class="mt-3">
+              {% csrf_token %}
+              {% if na_lista_de_espera %}
+                <input type="hidden" name="acao" value="sair">
+                <p class="text-center text-xs text-slate-600">Você está na lista de espera. Avisamos por e-mail se abrir vaga.</p>
+                <button type="submit" class="mt-2 w-full text-sm font-medium text-slate-500 hover:text-slate-800">Sair da lista de espera</button>
+              {% else %}
+                <button type="submit" class="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">Entrar na lista de espera</button>
+              {% endif %}
+            </form>
+          {% else %}
+            <p class="mt-3 text-center text-xs text-slate-500">Entre na sua conta para ficar na lista de espera.</p>
+          {% endif %}
         {% else %}
           <button type="button" disabled class="w-full cursor-not-allowed rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-400">Inscrições encerradas</button>
         {% endif %}
       </div>
 
       <ul class="mt-6 space-y-3 border-t border-slate-100 pt-5 text-sm text-slate-600">
-        <li class="flex items-center gap-2.5">{% icone "escudo" "size-5 shrink-0 text-emerald-600" %} Vaga garantida na hora</li>
-        <li class="flex items-center gap-2.5">{% icone "raio" "size-5 shrink-0 text-emerald-600" %} Cancelamento grátis com pagamento pendente</li>
+        <li class="flex items-center gap-2.5">{% icone "escudo" "size-5 shrink-0 text-emerald-600" %} Pagou, a vaga é sua na hora</li>
+        <li class="flex items-center gap-2.5">{% icone "raio" "size-5 shrink-0 text-emerald-600" %} Cancele até 24h antes e receba crédito</li>
       </ul>
     </div>
   </aside>

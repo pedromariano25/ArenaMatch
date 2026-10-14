@@ -3,9 +3,11 @@
 As regras de negócio ficam em ``clean()``. ``ValidatedModel.save()`` executa
 ``full_clean()`` dentro de uma transação, então as regras valem para qualquer
 caminho de escrita (Django Admin, actions, API REST, shell), e não apenas para
-formulários.
+formulários. Os fluxos que movimentam dinheiro (checkout, estornos, repasses)
+ficam nos módulos de serviço: ``checkout``, ``partidas`` e ``razao``.
 """
 
+import math
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
@@ -16,7 +18,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
-from django.db.models import F, Q
+from django.db.models import Count, F, Q
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from django.urls import reverse
@@ -29,8 +31,32 @@ from .validators import normalizar_documento, validar_cnpj, validar_cpf, validar
 MEIA_NOITE = time(0, 0)
 
 CENTAVO = Decimal("0.01")
-# Taxa de serviço da plataforma, cobrada do jogador sobre a parte da quadra em cada vaga.
+ZERO = Decimal("0.00")
+# Taxa de serviço da plataforma, cobrada do jogador de linha sobre a parte da quadra,
+# com um valor mínimo por vaga. São os padrões do contrato de cada arena.
 TAXA_PLATAFORMA_PADRAO = Decimal("15.00")
+TAXA_MINIMA_PADRAO = Decimal("2.00")
+# Acréscimo de quem paga com cartão, para cobrir a tarifa maior do cartão.
+ACRESCIMO_CARTAO_PERCENTUAL = Decimal("5.00")
+# Por quanto tempo a vaga fica reservada enquanto o jogador conclui o pagamento.
+MINUTOS_RESERVA = 10
+# Até quantas horas antes do jogo o jogador cancela e recebe crédito integral.
+HORAS_CANCELAMENTO_COM_CREDITO = 24
+# Mínimo de jogadores pagos (% das vagas) e prazo para atingi-lo: padrões da arena.
+QUORUM_PERCENTUAL_PADRAO = 70
+HORAS_PRAZO_QUORUM_PADRAO = 3
+# A parte da arena fica retida até o dia seguinte à partida, para cobrir cancelamentos.
+DIAS_RETENCAO_SALDO = 1
+
+
+def arredondar(valor: Decimal) -> Decimal:
+    """Arredonda para o centavo (meio para cima)."""
+    return valor.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
+def calcular_acrescimo_cartao(valor: Decimal) -> Decimal:
+    """Acréscimo cobrado de quem paga ``valor`` com cartão."""
+    return arredondar(valor * ACRESCIMO_CARTAO_PERCENTUAL / 100)
 
 
 # --- Choices -----------------------------------------------------------------
@@ -78,20 +104,85 @@ class StatusPartida(models.TextChoices):
     CANCELADA = "cancelada", "Cancelada"
 
 
+class MotivoCancelamento(models.TextChoices):
+    """Por que uma partida foi cancelada."""
+
+    ARENA = "arena", "Cancelada pela arena"
+    QUORUM = "quorum", "Mínimo de jogadores não atingido"
+
+
+class Posicao(models.TextChoices):
+    """Tipo de vaga na partida."""
+
+    LINHA = "linha", "Linha"
+    GOLEIRO = "goleiro", "Goleiro"
+
+
+class StatusInscricao(models.TextChoices):
+    """Ciclo de vida da inscrição: reserva, pagamento e confirmação (ou não)."""
+
+    AGUARDANDO_PAGAMENTO = "aguardando_pagamento", "Aguardando pagamento"
+    CONFIRMADA = "confirmada", "Confirmada"
+    EXPIRADA = "expirada", "Expirada"
+    CANCELADA = "cancelada", "Cancelada"
+    REEMBOLSADA = "reembolsada", "Reembolsada"
+
+
+class MetodoPagamento(models.TextChoices):
+    """Forma de pagamento da vaga."""
+
+    PIX = "pix", "Pix"
+    CARTAO = "cartao", "Cartão de crédito"
+    CREDITO = "credito", "Crédito ArenaMatch"
+    GRATUITO = "gratuito", "Gratuito"
+
+
 class StatusPagamento(models.TextChoices):
-    """Situação do pagamento de uma inscrição (registro manual no MVP)."""
+    """Situação de uma cobrança no gateway."""
 
     PENDENTE = "pendente", "Pendente"
+    APROVADO = "aprovado", "Aprovado"
+    RECUSADO = "recusado", "Recusado"
+    EXPIRADO = "expirado", "Expirado"
+    CANCELADO = "cancelado", "Cancelado"
+    ESTORNADO = "estornado", "Estornado"
+
+
+class TipoConta(models.TextChoices):
+    """Dono de uma carteira do razão."""
+
+    ARENA = "arena", "Arena"
+    PLATAFORMA = "plataforma", "Plataforma"
+    JOGADOR = "jogador", "Crédito do jogador"
+
+
+class TipoLancamento(models.TextChoices):
+    """Natureza de um lançamento do razão."""
+
+    VENDA_VAGA = "venda_vaga", "Venda de vaga"
+    TAXA_SERVICO = "taxa_servico", "Taxa de serviço"
+    ACRESCIMO_CARTAO = "acrescimo_cartao", "Acréscimo do cartão"
+    TARIFA_GATEWAY = "tarifa_gateway", "Tarifa do gateway"
+    ESTORNO = "estorno", "Estorno"
+    CREDITO = "credito", "Crédito ao jogador"
+    USO_CREDITO = "uso_credito", "Uso de crédito"
+    AJUSTE_FECHAMENTO = "ajuste_fechamento", "Ajuste de fechamento"
+    REPASSE = "repasse", "Repasse à arena"
+
+
+class StatusRepasse(models.TextChoices):
+    """Situação de uma transferência para a arena."""
+
     PAGO = "pago", "Pago"
-    REEMBOLSADO = "reembolsado", "Reembolsado"
+    FALHOU = "falhou", "Falhou"
 
 
 # Horários que podem receber uma partida aberta.
 STATUS_HORARIO_LIVRE = (StatusHorario.OCIOSO, StatusHorario.CANCELADO)
 # Partidas em andamento. Aberta/Lotada são derivados das vagas disponíveis.
 STATUS_PARTIDA_ATIVA = (StatusPartida.ABERTA, StatusPartida.LOTADA)
-# Inscrições que ocupam vaga. Uma inscrição reembolsada libera a vaga.
-STATUS_OCUPA_VAGA = (StatusPagamento.PENDENTE, StatusPagamento.PAGO)
+# Inscrições ativas. A reserva (aguardando pagamento) só ocupa vaga dentro do prazo.
+STATUS_INSCRICAO_ATIVA = (StatusInscricao.AGUARDANDO_PAGAMENTO, StatusInscricao.CONFIRMADA)
 
 
 # --- Bases abstratas ---------------------------------------------------------
@@ -236,6 +327,34 @@ class Arena(ValidatedModel):
     hora_fechamento = models.TimeField(
         "hora de fechamento",
         help_text="Se for menor que a hora de abertura, a arena fecha depois da meia-noite.",
+    )
+    taxa_plataforma_percentual = models.DecimalField(
+        "taxa da plataforma (%)",
+        max_digits=5,
+        decimal_places=2,
+        default=TAXA_PLATAFORMA_PADRAO,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+        help_text="Contrato: cobrada do jogador de linha sobre a parte da quadra em cada vaga.",
+    )
+    taxa_minima = models.DecimalField(
+        "taxa mínima por vaga (R$)",
+        max_digits=6,
+        decimal_places=2,
+        default=TAXA_MINIMA_PADRAO,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Contrato: a taxa de serviço nunca fica abaixo deste valor.",
+    )
+    quorum_percentual = models.PositiveSmallIntegerField(
+        "mínimo para confirmar (%)",
+        default=QUORUM_PERCENTUAL_PADRAO,
+        validators=[MaxValueValidator(100)],
+        help_text="Percentual das vagas que precisa estar pago até o prazo. Abaixo disso, a "
+        "partida é cancelada e todos são reembolsados. Use 0 para não exigir mínimo.",
+    )
+    horas_prazo_quorum = models.PositiveSmallIntegerField(
+        "prazo do mínimo (horas antes do jogo)",
+        default=HORAS_PRAZO_QUORUM_PADRAO,
+        validators=[MinValueValidator(1), MaxValueValidator(48)],
     )
 
     class Meta:
@@ -426,6 +545,18 @@ class OpenMatchQuerySet(models.QuerySet):
         """Carrega horário, quadra e arena na mesma consulta (evita N+1)."""
         return self.select_related("time_slot__court__arena")
 
+    def com_confirmados(self) -> Self:
+        """Anota ``num_confirmados``: jogadores com vaga paga que seguem na partida."""
+        return self.annotate(
+            num_confirmados=Count(
+                "inscricoes",
+                filter=Q(
+                    inscricoes__status=StatusInscricao.CONFIRMADA,
+                    inscricoes__repasse_solicitado_em__isnull=True,
+                ),
+            )
+        )
+
     def futuras(self) -> Self:
         """Partidas cujo horário ainda não começou."""
         agora = timezone.localtime()
@@ -440,6 +571,7 @@ class OpenMatchQuerySet(models.QuerySet):
             self.futuras()
             .filter(status__in=STATUS_PARTIDA_ATIVA)
             .com_relacionados()
+            .com_confirmados()
             .order_by("time_slot__data", "time_slot__hora_inicio")
         )
 
@@ -466,9 +598,10 @@ class OpenMatchQuerySet(models.QuerySet):
 class OpenMatch(ValidatedModel):
     """Partida aberta à comunidade, criada a partir de um horário livre da agenda.
 
-    Motor financeiro: o gestor define o valor total do aluguel e as vagas; o sistema
-    calcula a parte da quadra em cada vaga e soma a taxa de serviço da plataforma,
-    paga pelo jogador. Com todas as vagas vendidas, a quadra recebe o aluguel cheio.
+    Motor financeiro: o gestor define o valor total do aluguel e as vagas. Goleiros
+    não pagam, então o aluguel é dividido entre as vagas de linha; o sistema soma a
+    taxa de serviço da plataforma (percentual com valor mínimo), paga pelo jogador.
+    Com todas as vagas de linha pagas, a quadra recebe o aluguel cheio.
     """
 
     time_slot = models.OneToOneField(
@@ -478,29 +611,60 @@ class OpenMatch(ValidatedModel):
         verbose_name="horário",
     )
     vagas_totais = models.PositiveSmallIntegerField(
-        "vagas totais", validators=[MinValueValidator(1)]
+        "vagas totais",
+        validators=[MinValueValidator(1)],
+        help_text="Total de jogadores, incluindo os goleiros.",
+    )
+    vagas_goleiro = models.PositiveSmallIntegerField(
+        "vagas de goleiro",
+        default=0,
+        help_text="Goleiros não pagam; o aluguel é dividido entre as vagas de linha.",
     )
     # Derivado das inscrições. PositiveSmallIntegerField também cria CHECK (>= 0) no banco.
     vagas_disponiveis = models.PositiveSmallIntegerField(
         "vagas disponíveis",
         default=0,
         editable=False,
-        help_text="Calculado automaticamente: vagas totais menos inscrições pendentes ou pagas.",
+        help_text="Calculado automaticamente: vagas totais menos inscrições pagas ou em pagamento.",
     )
     valor_total_aluguel = models.DecimalField(
         "valor total do aluguel (R$)",
         max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(CENTAVO)],
-        help_text="Quanto a quadra recebe com todas as vagas vendidas.",
+        help_text="Quanto a quadra recebe com todas as vagas de linha vendidas.",
     )
     taxa_plataforma_percentual = models.DecimalField(
         "taxa da plataforma (%)",
         max_digits=5,
         decimal_places=2,
-        default=TAXA_PLATAFORMA_PADRAO,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
-        help_text="Taxa de serviço cobrada do jogador sobre a parte da quadra em cada vaga.",
+        help_text="Em branco, usa o contrato da arena.",
+    )
+    taxa_minima = models.DecimalField(
+        "taxa mínima por vaga (R$)",
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Em branco, usa o contrato da arena.",
+    )
+    quorum_percentual = models.PositiveSmallIntegerField(
+        "mínimo para confirmar (%)",
+        null=True,
+        blank=True,
+        validators=[MaxValueValidator(100)],
+        help_text="Em branco, usa o padrão da arena.",
+    )
+    horas_prazo_quorum = models.PositiveSmallIntegerField(
+        "prazo do mínimo (horas antes do jogo)",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(48)],
+        help_text="Em branco, usa o padrão da arena.",
     )
     nivel_competitividade = models.CharField(
         "nível de competitividade",
@@ -514,8 +678,19 @@ class OpenMatch(ValidatedModel):
         choices=StatusPartida.choices,
         default=StatusPartida.ABERTA,
         help_text="Aberta e Lotada são definidos automaticamente pelas vagas. "
-        "Use Finalizada ou Cancelada para encerrar a partida.",
+        "Finalizada e Cancelada encerram a partida.",
     )
+    quorum_conferido_em = models.DateTimeField(
+        "mínimo conferido em", null=True, blank=True, editable=False
+    )
+    motivo_cancelamento = models.CharField(
+        "motivo do cancelamento",
+        max_length=20,
+        choices=MotivoCancelamento.choices,
+        blank=True,
+        editable=False,
+    )
+    cancelada_em = models.DateTimeField("cancelada em", null=True, blank=True, editable=False)
 
     objects = OpenMatchQuerySet.as_manager()
 
@@ -530,6 +705,11 @@ class OpenMatch(ValidatedModel):
                 name="openmatch_vagas_disponiveis_lte_totais",
                 violation_error_message="As vagas disponíveis não podem ultrapassar as vagas totais.",
             ),
+            models.CheckConstraint(
+                condition=Q(vagas_goleiro__lt=F("vagas_totais")),
+                name="openmatch_ao_menos_uma_vaga_de_linha",
+                violation_error_message="A partida precisa de pelo menos uma vaga de linha.",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -538,9 +718,25 @@ class OpenMatch(ValidatedModel):
     def get_absolute_url(self) -> str:
         return reverse("arena:partida_detalhe", args=[self.pk])
 
+    # --- Vagas -----------------------------------------------------------------
+
+    @property
+    def vagas_linha(self) -> int:
+        """Vagas pagas (todas, menos as de goleiro)."""
+        return (self.vagas_totais or 0) - (self.vagas_goleiro or 0)
+
+    def capacidade(self, posicao: str) -> int:
+        """Quantas vagas a partida tem para a ``posicao``."""
+        return self.vagas_goleiro if posicao == Posicao.GOLEIRO else self.vagas_linha
+
+    def vagas_livres(self, posicao: str) -> int:
+        """Vagas da ``posicao`` ainda não ocupadas por inscrições pagas ou em pagamento."""
+        ocupadas = Booking.objects.filter(open_match_id=self.pk, posicao=posicao).ocupando().count()
+        return max(self.capacidade(posicao) - ocupadas, 0)
+
     @property
     def vagas_ocupadas(self) -> int:
-        """Quantidade de vagas já ocupadas por inscrições pendentes ou pagas."""
+        """Quantidade de vagas já ocupadas por inscrições pagas ou em pagamento."""
         return self.vagas_totais - self.vagas_disponiveis
 
     @property
@@ -555,54 +751,128 @@ class OpenMatch(ValidatedModel):
         """Indica se a partida está aberta (com vaga) e ainda não começou."""
         return self.status == StatusPartida.ABERTA and not self.time_slot.ja_comecou
 
+    # --- Preços ----------------------------------------------------------------
+
     @property
     def preco_vaga_base(self) -> Decimal:
-        """Parcela exibida da quadra por vaga, truncada no centavo.
+        """Parte da quadra em cada vaga de linha, truncada no centavo.
 
         O resíduo do rateio é conciliado em ``ajuste_repasse_fechamento`` quando
-        todas as vagas são ocupadas. Assim, R$ 200 ÷ 14 aparece como R$ 14,28,
-        sem reduzir o repasse total da quadra.
+        todas as vagas de linha são pagas. Assim, R$ 200 ÷ 14 aparece como
+        R$ 14,28, sem reduzir o repasse total da quadra.
         """
-        if not self.vagas_totais or self.valor_total_aluguel is None:
-            return Decimal("0.00")
-        return (self.valor_total_aluguel / self.vagas_totais).quantize(CENTAVO, rounding=ROUND_DOWN)
+        if self.vagas_linha <= 0 or self.valor_total_aluguel is None:
+            return ZERO
+        return (self.valor_total_aluguel / self.vagas_linha).quantize(CENTAVO, rounding=ROUND_DOWN)
 
     @property
     def valor_taxa_vaga(self) -> Decimal:
-        """Receita da plataforma por vaga (taxa de conveniência paga pelo jogador)."""
-        taxa = self.taxa_plataforma_percentual or Decimal("0")
-        return (self.preco_vaga_base * taxa / 100).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+        """Taxa de serviço por vaga de linha: percentual do contrato, com valor mínimo."""
+        base = self.preco_vaga_base
+        if not base:
+            return ZERO
+        percentual = (
+            TAXA_PLATAFORMA_PADRAO
+            if self.taxa_plataforma_percentual is None
+            else self.taxa_plataforma_percentual
+        )
+        minima = TAXA_MINIMA_PADRAO if self.taxa_minima is None else self.taxa_minima
+        return max(arredondar(base * percentual / 100), minima)
 
     @property
     def preco_final_jogador(self) -> Decimal:
-        """Valor cobrado do jogador no app: parte da quadra + taxa de conveniência."""
+        """Preço da vaga de linha no Pix (ou com crédito): parte da quadra + taxa."""
         return self.preco_vaga_base + self.valor_taxa_vaga
 
     @property
+    def preco_cartao(self) -> Decimal:
+        """Preço da vaga de linha no cartão, com o acréscimo que cobre a tarifa."""
+        return self.preco_final_jogador + calcular_acrescimo_cartao(self.preco_final_jogador)
+
+    def valores_da_vaga(self, posicao: str, metodo: str) -> tuple[Decimal, Decimal, Decimal]:
+        """Parte da quadra, taxa de serviço e acréscimo do cartão de uma vaga."""
+        if posicao == Posicao.GOLEIRO:
+            return ZERO, ZERO, ZERO
+        vaga, taxa = self.preco_vaga_base, self.valor_taxa_vaga
+        acrescimo = calcular_acrescimo_cartao(vaga + taxa) if metodo == MetodoPagamento.CARTAO else ZERO
+        return vaga, taxa, acrescimo
+
+    @property
     def ajuste_repasse_fechamento(self) -> Decimal:
-        """Resíduo do aluguel a conciliar no repasse quando todas as vagas forem ocupadas.
+        """Resíduo do rateio devido à arena quando todas as vagas de linha estão pagas.
 
         O ajuste sai da receita agregada da plataforma. Ele não altera o preço
         anunciado nem a parcela individual congelada em cada inscrição.
         """
         if (
             self.status == StatusPartida.CANCELADA
-            or self.vagas_disponiveis != 0
-            or not self.vagas_totais
+            or self.vagas_linha <= 0
             or self.valor_total_aluguel is None
         ):
-            return Decimal("0.00")
-        residuo = self.valor_total_aluguel - self.preco_vaga_base * self.vagas_totais
-        return max(residuo, Decimal("0.00")).quantize(CENTAVO)
+            return ZERO
+        pagas = Booking.objects.filter(
+            open_match_id=self.pk, posicao=Posicao.LINHA, status=StatusInscricao.CONFIRMADA
+        ).count()
+        if pagas < self.vagas_linha:
+            return ZERO
+        residuo = self.valor_total_aluguel - self.preco_vaga_base * self.vagas_linha
+        return max(residuo, ZERO).quantize(CENTAVO)
+
+    # --- Mínimo de jogadores (quórum) -------------------------------------------
+
+    @property
+    def minimo_jogadores(self) -> int:
+        """Jogadores pagos necessários até o prazo para a partida acontecer."""
+        percentual = (
+            QUORUM_PERCENTUAL_PADRAO if self.quorum_percentual is None else self.quorum_percentual
+        )
+        return math.ceil((self.vagas_totais or 0) * percentual / 100)
+
+    @property
+    def prazo_quorum(self) -> datetime:
+        """Momento em que o mínimo de jogadores é conferido."""
+        horas = self.horas_prazo_quorum or HORAS_PRAZO_QUORUM_PADRAO
+        return self.time_slot.inicio - timedelta(hours=horas)
+
+    @property
+    def jogadores_confirmados(self) -> int:
+        """Jogadores com vaga paga que seguem na partida (usa a anotação da vitrine)."""
+        anotado = getattr(self, "num_confirmados", None)
+        if anotado is not None:
+            return anotado
+        return Booking.objects.filter(open_match_id=self.pk).confirmadas().count()
+
+    @property
+    def faltam_para_confirmar(self) -> int:
+        """Quantos jogadores pagos ainda faltam para atingir o mínimo."""
+        return max(self.minimo_jogadores - self.jogadores_confirmados, 0)
+
+    @property
+    def jogo_confirmado(self) -> bool:
+        """O mínimo de jogadores pagos já foi atingido."""
+        return self.faltam_para_confirmar == 0
+
+    # --- Validação -------------------------------------------------------------
 
     def clean(self) -> None:
-        """Valida horário e preço e recalcula as vagas disponíveis e o status."""
+        """Aplica o contrato da arena, valida horário e preço e recalcula as vagas."""
         super().clean()
+        self._aplicar_contrato_da_arena()
         if self.status in STATUS_PARTIDA_ATIVA:
             self._validar_horario_livre()
         self._validar_preco_travado()
         if self.vagas_totais is not None:
             self._recalcular_vagas()
+
+    def _aplicar_contrato_da_arena(self) -> None:
+        """Copia da arena a taxa e as regras de quórum que não foram definidas na partida."""
+        try:
+            arena = self.time_slot.court.arena
+        except ObjectDoesNotExist:
+            return  # FK ausente ou inválida: o erro já foi reportado por clean_fields().
+        for campo in ("taxa_plataforma_percentual", "taxa_minima", "quorum_percentual", "horas_prazo_quorum"):
+            if getattr(self, campo) is None:
+                setattr(self, campo, getattr(arena, campo))
 
     def _validar_preco_travado(self) -> None:
         """Depois da primeira inscrição ativa, aluguel, vagas e taxa não mudam.
@@ -612,14 +882,21 @@ class OpenMatch(ValidatedModel):
         """
         if self._state.adding:
             return
-        campos = ("valor_total_aluguel", "vagas_totais", "taxa_plataforma_percentual")
+        campos = (
+            "valor_total_aluguel",
+            "vagas_totais",
+            "vagas_goleiro",
+            "taxa_plataforma_percentual",
+            "taxa_minima",
+        )
         salvo = OpenMatch.objects.filter(pk=self.pk).values(*campos).first()
         if salvo is None or all(salvo[campo] == getattr(self, campo) for campo in campos):
             return
-        if Booking.objects.filter(open_match_id=self.pk, status_pagamento__in=STATUS_OCUPA_VAGA).exists():
+        ativas = Booking.objects.filter(open_match_id=self.pk, status__in=STATUS_INSCRICAO_ATIVA)
+        if ativas.exists():
             raise ValidationError(
                 "O aluguel, as vagas e a taxa ficam travados depois da primeira inscrição. "
-                "Para mudar, reembolse as inscrições ou abra outra partida.",
+                "Para mudar, cancele a partida e abra outra.",
                 code="preco_travado",
             )
 
@@ -646,17 +923,16 @@ class OpenMatch(ValidatedModel):
             )
 
     def _recalcular_vagas(self) -> None:
-        """Deriva ``vagas_disponiveis`` das inscrições ativas e sincroniza Aberta/Lotada.
+        """Deriva ``vagas_disponiveis`` das inscrições e sincroniza Aberta/Lotada.
 
         Recalcular a partir das inscrições, em vez de incrementar ou decrementar
-        um contador, impede que o valor se desvie com o tempo.
+        um contador, impede que o valor se desvie com o tempo. Reservas vencidas
+        deixam de contar mesmo antes de a rotina de expiração passar.
         """
         ocupadas = (
             0
             if self._state.adding
-            else Booking.objects.filter(
-                open_match_id=self.pk, status_pagamento__in=STATUS_OCUPA_VAGA
-            ).count()
+            else Booking.objects.filter(open_match_id=self.pk).ocupando().count()
         )
         if ocupadas > self.vagas_totais:
             raise ValidationError(
@@ -672,13 +948,61 @@ class OpenMatch(ValidatedModel):
             )
 
 
+class BookingQuerySet(models.QuerySet):
+    """Consultas de inscrições usadas no cálculo de vagas, no quórum e nas rotinas."""
+
+    def ocupando(self, agora: datetime | None = None) -> Self:
+        """Inscrições que ocupam vaga: confirmadas (fora de repasse) e reservas no prazo."""
+        agora = agora or timezone.now()
+        return self.filter(
+            Q(status=StatusInscricao.CONFIRMADA, repasse_solicitado_em__isnull=True)
+            | Q(status=StatusInscricao.AGUARDANDO_PAGAMENTO, reservada_ate__gt=agora)
+        )
+
+    def confirmadas(self) -> Self:
+        """Jogadores com vaga paga que seguem na partida (fora de repasse)."""
+        return self.filter(status=StatusInscricao.CONFIRMADA, repasse_solicitado_em__isnull=True)
+
+    def reservas_vencidas(self, agora: datetime | None = None) -> Self:
+        """Reservas cujo prazo de pagamento terminou."""
+        return self.filter(
+            status=StatusInscricao.AGUARDANDO_PAGAMENTO,
+            reservada_ate__lte=agora or timezone.now(),
+        )
+
+
+# Transições permitidas entre os status da inscrição. Expirada volta a Confirmada
+# quando o pagamento é aprovado depois do prazo e ainda há vaga.
+_TRANSICOES_INSCRICAO = {
+    StatusInscricao.AGUARDANDO_PAGAMENTO: {
+        StatusInscricao.CONFIRMADA,
+        StatusInscricao.EXPIRADA,
+        StatusInscricao.CANCELADA,
+    },
+    StatusInscricao.EXPIRADA: {StatusInscricao.CONFIRMADA},
+    StatusInscricao.CONFIRMADA: {StatusInscricao.CANCELADA, StatusInscricao.REEMBOLSADA},
+    StatusInscricao.CANCELADA: set(),
+    StatusInscricao.REEMBOLSADA: set(),
+}
+
+
+def _ocupa(status: str, reservada_ate: datetime | None, repasse_em: datetime | None) -> bool:
+    """Regra única de ocupação de vaga (espelha ``BookingQuerySet.ocupando``)."""
+    if status == StatusInscricao.CONFIRMADA:
+        return repasse_em is None
+    if status == StatusInscricao.AGUARDANDO_PAGAMENTO:
+        return reservada_ate is not None and reservada_ate > timezone.now()
+    return False
+
+
 class Booking(ValidatedModel):
     """Inscrição de um jogador em uma partida aberta.
 
-    Os valores da vaga (parte da quadra e taxa da plataforma) são congelados na
-    inscrição: relatórios financeiros usam esses valores, e não o preço atual da
-    partida. Mudanças de status devem passar por ``save()``, e não por
-    ``QuerySet.update()``, para que as vagas da partida sejam recalculadas.
+    Nasce como reserva (aguardando pagamento), que segura a vaga por
+    ``MINUTOS_RESERVA``. O pagamento aprovado a confirma; sem pagamento, ela
+    expira. Os valores (parte da quadra, taxa e acréscimo do cartão) são
+    congelados na criação. Inscrições nunca são apagadas: mudanças de status
+    passam por ``save()``, que valida a transição e recalcula as vagas.
     """
 
     open_match = models.ForeignKey(
@@ -694,39 +1018,71 @@ class Booking(ValidatedModel):
         limit_choices_to={"is_player": True},
         verbose_name="jogador",
     )
-    status_pagamento = models.CharField(
-        "status do pagamento",
-        max_length=20,
-        choices=StatusPagamento.choices,
-        default=StatusPagamento.PENDENTE,
+    posicao = models.CharField(
+        "posição", max_length=10, choices=Posicao.choices, default=Posicao.LINHA
+    )
+    status = models.CharField(
+        "status",
+        max_length=25,
+        choices=StatusInscricao.choices,
+        default=StatusInscricao.AGUARDANDO_PAGAMENTO,
+    )
+    metodo_pagamento = models.CharField(
+        "forma de pagamento",
+        max_length=10,
+        choices=MetodoPagamento.choices,
+        default=MetodoPagamento.PIX,
     )
     data_inscricao = models.DateTimeField("data de inscrição", default=timezone.now)
+    reservada_ate = models.DateTimeField(
+        "vaga reservada até",
+        null=True,
+        blank=True,
+        help_text="Prazo para concluir o pagamento; depois dele, a vaga volta para a partida.",
+    )
+    confirmada_em = models.DateTimeField("confirmada em", null=True, blank=True)
+    cancelada_em = models.DateTimeField("cancelada em", null=True, blank=True)
+    repasse_solicitado_em = models.DateTimeField(
+        "repasse solicitado em",
+        null=True,
+        blank=True,
+        help_text="O jogador liberou a vaga para a lista de espera.",
+    )
     valor_vaga = models.DecimalField(
         "valor para a quadra (R$)",
         max_digits=8,
         decimal_places=2,
-        default=Decimal("0.00"),
+        default=ZERO,
         editable=False,
         help_text="Parte do aluguel paga nesta vaga (repasse à quadra), congelada na inscrição.",
     )
     valor_taxa = models.DecimalField(
-        "taxa de conveniência (R$)",
+        "taxa de serviço (R$)",
         max_digits=8,
         decimal_places=2,
-        default=Decimal("0.00"),
+        default=ZERO,
         editable=False,
         help_text="Receita da plataforma nesta vaga, congelada na inscrição.",
     )
+    valor_acrescimo = models.DecimalField(
+        "acréscimo do cartão (R$)",
+        max_digits=8,
+        decimal_places=2,
+        default=ZERO,
+        editable=False,
+    )
+
+    objects = BookingQuerySet.as_manager()
 
     class Meta:
         verbose_name = "inscrição"
         verbose_name_plural = "inscrições"
         ordering = ["-data_inscricao"]
         constraints = [
-            # Inscrições reembolsadas ficam no histórico e não impedem uma nova inscrição.
+            # Inscrições encerradas ficam no histórico e não impedem uma nova inscrição.
             models.UniqueConstraint(
                 fields=["open_match", "player"],
-                condition=Q(status_pagamento__in=STATUS_OCUPA_VAGA),
+                condition=Q(status__in=STATUS_INSCRICAO_ATIVA),
                 name="booking_inscricao_ativa_unica",
                 violation_error_message="Este jogador já tem uma inscrição ativa nesta partida.",
             ),
@@ -736,54 +1092,84 @@ class Booking(ValidatedModel):
         return f"{self.player} · {self.open_match.time_slot}"
 
     @property
-    def ocupa_vaga(self) -> bool:
-        """Indica se a inscrição ocupa vaga (pagamento pendente ou pago)."""
-        return self.status_pagamento in STATUS_OCUPA_VAGA
+    def valor_total(self) -> Decimal:
+        """Valor pago pelo jogador: parte da quadra + taxa + acréscimo do cartão."""
+        return self.valor_vaga + self.valor_taxa + self.valor_acrescimo
 
     @property
-    def valor_total(self) -> Decimal:
-        """Valor pago pelo jogador: parte da quadra + taxa de conveniência."""
-        return self.valor_vaga + self.valor_taxa
+    def ocupa_vaga(self) -> bool:
+        """Indica se a inscrição ocupa vaga agora."""
+        return _ocupa(self.status, self.reservada_ate, self.repasse_solicitado_em)
+
+    @property
+    def em_repasse(self) -> bool:
+        """O jogador pagou, mas liberou a vaga para a lista de espera."""
+        return self.status == StatusInscricao.CONFIRMADA and self.repasse_solicitado_em is not None
+
+    @property
+    def reserva_vencida(self) -> bool:
+        """Reserva cujo prazo de pagamento terminou (a rotina ainda vai expirá-la)."""
+        return (
+            self.status == StatusInscricao.AGUARDANDO_PAGAMENTO
+            and self.reservada_ate is not None
+            and self.reservada_ate <= timezone.now()
+        )
+
+    @property
+    def gratuita(self) -> bool:
+        return self.metodo_pagamento == MetodoPagamento.GRATUITO
+
+    @property
+    def prazo_credito(self) -> datetime:
+        """Até quando o cancelamento devolve o valor como crédito integral."""
+        return self.open_match.time_slot.inicio - timedelta(hours=HORAS_CANCELAMENTO_COM_CREDITO)
 
     @property
     def pode_cancelar(self) -> bool:
-        """O jogador pode desistir de inscrições pendentes antes do início da partida."""
+        """Reservas podem ser canceladas; vagas pagas, até 24h antes (com crédito)."""
+        if self.open_match.time_slot.ja_comecou:
+            return False
+        if self.status == StatusInscricao.AGUARDANDO_PAGAMENTO:
+            return True
+        if self.status != StatusInscricao.CONFIRMADA or self.em_repasse:
+            return False
+        return self.gratuita or timezone.now() < self.prazo_credito
+
+    @property
+    def pode_repassar(self) -> bool:
+        """Nas últimas 24h, a vaga paga não é reembolsada, mas pode ir para a lista de espera."""
         return (
-            self.status_pagamento == StatusPagamento.PENDENTE
-            and not self.open_match.time_slot.ja_comecou
+            self.status == StatusInscricao.CONFIRMADA
+            and not self.gratuita
+            and not self.em_repasse
+            and self.prazo_credito <= timezone.now() < self.open_match.time_slot.inicio
         )
-
-    def cancelar(self) -> None:
-        """Cancela a inscrição pendente: ela é excluída e a vaga volta para a partida.
-
-        Raises:
-            ValidationError: se a inscrição já foi paga/reembolsada ou a partida começou.
-        """
-        if not self.pode_cancelar:
-            raise ValidationError(
-                "Só é possível cancelar inscrições com pagamento pendente, "
-                "antes do início da partida. Fale com a arena para reembolsos.",
-                code="cancelamento_negado",
-            )
-        self.delete()
 
     def clean(self) -> None:
-        """Impede a troca de partida ou jogador e valida a vaga em novas ocupações."""
+        """Impede a troca de partida ou jogador, valida a transição e a vaga em novas ocupações."""
         super().clean()
         anterior = self._estado_anterior()
-        if anterior is not None and (
-            anterior["open_match_id"] != self.open_match_id
-            or anterior["player_id"] != self.player_id
-        ):
-            raise ValidationError(
-                "Não é possível trocar a partida ou o jogador de uma inscrição. "
-                "Reembolse esta inscrição e crie outra.",
-                code="inscricao_imutavel",
-            )
-        ocupava_vaga = (
-            anterior is not None and anterior["status_pagamento"] in STATUS_OCUPA_VAGA
+        if anterior is not None:
+            if (
+                anterior["open_match_id"] != self.open_match_id
+                or anterior["player_id"] != self.player_id
+            ):
+                raise ValidationError(
+                    "Não é possível trocar a partida ou o jogador de uma inscrição. "
+                    "Cancele esta inscrição e crie outra.",
+                    code="inscricao_imutavel",
+                )
+            de, para = anterior["status"], self.status
+            if de != para and para not in _TRANSICOES_INSCRICAO.get(de, set()):
+                raise ValidationError(
+                    f"Não é possível passar a inscrição de {StatusInscricao(de).label.lower()} "
+                    f"para {StatusInscricao(para).label.lower()}.",
+                    code="transicao_invalida",
+                )
+        ocupava = anterior is not None and _ocupa(
+            anterior["status"], anterior["reservada_ate"], anterior["repasse_solicitado_em"]
         )
-        if self.ocupa_vaga and not ocupava_vaga:
+        if self.ocupa_vaga and not ocupava:
             self._validar_nova_ocupacao()
 
     def save(self, *args: Any, **kwargs: Any) -> None:
@@ -791,7 +1177,7 @@ class Booking(ValidatedModel):
 
         A partida é recarregada com ``select_for_update()`` (bloqueio de linha no
         PostgreSQL) para serializar inscrições concorrentes na última vaga.
-        Na criação, os valores da vaga são copiados da partida.
+        Na criação, os valores da vaga são congelados a partir da partida.
         """
         with transaction.atomic():
             try:
@@ -802,10 +1188,22 @@ class Booking(ValidatedModel):
                 pass  # full_clean() reportará a partida ausente ou inválida.
             else:
                 if self._state.adding:
-                    self.valor_vaga = self.open_match.preco_vaga_base
-                    self.valor_taxa = self.open_match.valor_taxa_vaga
+                    self._congelar_valores()
             super().save(*args, **kwargs)
             self.open_match.atualizar_vagas()
+
+    def _congelar_valores(self) -> None:
+        """Copia os valores da vaga e define os prazos iniciais da inscrição."""
+        if self.posicao == Posicao.GOLEIRO:
+            self.metodo_pagamento = MetodoPagamento.GRATUITO
+        self.valor_vaga, self.valor_taxa, self.valor_acrescimo = self.open_match.valores_da_vaga(
+            self.posicao, self.metodo_pagamento
+        )
+        agora = timezone.now()
+        if self.status == StatusInscricao.AGUARDANDO_PAGAMENTO and self.reservada_ate is None:
+            self.reservada_ate = agora + timedelta(minutes=MINUTOS_RESERVA)
+        if self.status == StatusInscricao.CONFIRMADA and self.confirmada_em is None:
+            self.confirmada_em = agora
 
     def _estado_anterior(self) -> dict[str, Any] | None:
         """Lê do banco os valores já salvos (``None`` para inscrições novas)."""
@@ -813,19 +1211,17 @@ class Booking(ValidatedModel):
             return None
         return (
             Booking.objects.filter(pk=self.pk)
-            .values("open_match_id", "player_id", "status_pagamento")
+            .values("open_match_id", "player_id", "status", "reservada_ate", "repasse_solicitado_em")
             .first()
         )
 
     def _validar_nova_ocupacao(self) -> None:
-        """Valida uma inscrição nova ou reativada: partida aberta, não iniciada e com vaga."""
+        """Valida uma ocupação nova: partida ativa, não iniciada e com vaga na posição."""
         try:
             partida = self.open_match
         except ObjectDoesNotExist:
             return  # FK ausente ou inválida: o erro já foi reportado por clean_fields().
-        if partida.status == StatusPartida.LOTADA:
-            raise ValidationError("Esta partida está lotada.", code="partida_lotada")
-        if partida.status != StatusPartida.ABERTA:
+        if partida.status not in STATUS_PARTIDA_ATIVA:
             raise ValidationError(
                 f"Esta partida está {partida.get_status_display().lower()} "
                 "e não aceita inscrições.",
@@ -837,13 +1233,16 @@ class Booking(ValidatedModel):
                 code="partida_iniciada",
             )
         ocupadas = (
-            Booking.objects.filter(
-                open_match_id=partida.pk, status_pagamento__in=STATUS_OCUPA_VAGA
-            )
+            Booking.objects.filter(open_match_id=partida.pk, posicao=self.posicao)
+            .ocupando()
             .exclude(pk=self.pk)
             .count()
         )
-        if ocupadas >= partida.vagas_totais:
+        if ocupadas >= partida.capacidade(self.posicao):
+            if self.posicao == Posicao.GOLEIRO:
+                raise ValidationError(
+                    "Não há vaga de goleiro disponível nesta partida.", code="sem_vaga_goleiro"
+                )
             raise ValidationError("Esta partida está lotada.", code="partida_lotada")
 
 
@@ -859,3 +1258,220 @@ def devolver_vaga_apos_exclusao(sender: type[Booking], instance: Booking, **kwar
     except OpenMatch.DoesNotExist:
         return
     partida.atualizar_vagas()
+
+
+class WaitlistEntry(BaseModel):
+    """Jogador na lista de espera de uma partida, avisado quando uma vaga abre."""
+
+    partida = models.ForeignKey(
+        OpenMatch,
+        on_delete=models.CASCADE,
+        related_name="lista_de_espera",
+        verbose_name="partida",
+    )
+    jogador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="listas_de_espera",
+        verbose_name="jogador",
+    )
+    posicao = models.CharField(
+        "posição", max_length=10, choices=Posicao.choices, default=Posicao.LINHA
+    )
+    notificado_em = models.DateTimeField("avisado em", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "lugar na lista de espera"
+        verbose_name_plural = "lista de espera"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["partida", "jogador"], name="lista_espera_unica"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.jogador} · {self.partida.time_slot}"
+
+
+# --- Pagamentos e razão contábil ---------------------------------------------
+
+
+class Payment(ValidatedModel):
+    """Cobrança de uma inscrição: no gateway (Pix ou cartão) ou com crédito do jogador."""
+
+    booking = models.ForeignKey(
+        Booking, on_delete=models.PROTECT, related_name="pagamentos", verbose_name="inscrição"
+    )
+    metodo = models.CharField("forma de pagamento", max_length=10, choices=MetodoPagamento.choices)
+    status = models.CharField(
+        "status", max_length=10, choices=StatusPagamento.choices, default=StatusPagamento.PENDENTE
+    )
+    valor = models.DecimalField("valor cobrado (R$)", max_digits=10, decimal_places=2)
+    tarifa_gateway = models.DecimalField(
+        "tarifa do gateway (R$)", max_digits=10, decimal_places=2, default=ZERO
+    )
+    gateway = models.CharField("gateway", max_length=40)
+    gateway_id = models.CharField(
+        "identificador no gateway", max_length=100, unique=True, null=True, blank=True
+    )
+    pix_copia_e_cola = models.TextField("Pix copia e cola", blank=True)
+    expira_em = models.DateTimeField("expira em", null=True, blank=True)
+    aprovado_em = models.DateTimeField("aprovado em", null=True, blank=True)
+    estornado_em = models.DateTimeField("estornado em", null=True, blank=True)
+    resposta_gateway = models.JSONField("última resposta do gateway", default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "pagamento"
+        verbose_name_plural = "pagamentos"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.get_metodo_display()} · {self.valor} · {self.get_status_display()}"
+
+
+class LedgerAccount(BaseModel):
+    """Carteira do razão: de uma arena, da plataforma ou de crédito de um jogador.
+
+    O saldo é sempre a soma dos lançamentos; a carteira não guarda saldo próprio.
+    """
+
+    tipo = models.CharField("tipo", max_length=12, choices=TipoConta.choices)
+    arena = models.ForeignKey(
+        Arena,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="contas",
+        verbose_name="arena",
+    )
+    jogador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="contas",
+        verbose_name="jogador",
+    )
+
+    class Meta:
+        verbose_name = "carteira"
+        verbose_name_plural = "carteiras"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["arena"], condition=Q(tipo=TipoConta.ARENA), name="carteira_unica_por_arena"
+            ),
+            models.UniqueConstraint(
+                fields=["jogador"],
+                condition=Q(tipo=TipoConta.JOGADOR),
+                name="carteira_unica_por_jogador",
+            ),
+            models.UniqueConstraint(
+                fields=["tipo"],
+                condition=Q(tipo=TipoConta.PLATAFORMA),
+                name="carteira_unica_da_plataforma",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(tipo=TipoConta.ARENA, arena__isnull=False, jogador__isnull=True)
+                    | Q(tipo=TipoConta.JOGADOR, jogador__isnull=False, arena__isnull=True)
+                    | Q(tipo=TipoConta.PLATAFORMA, arena__isnull=True, jogador__isnull=True)
+                ),
+                name="carteira_dono_coerente",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        if self.tipo == TipoConta.ARENA:
+            return f"Carteira · {self.arena}"
+        if self.tipo == TipoConta.JOGADOR:
+            return f"Crédito · {self.jogador}"
+        return "Carteira · ArenaMatch"
+
+
+class Payout(ValidatedModel):
+    """Repasse (transferência) do saldo disponível de uma arena."""
+
+    arena = models.ForeignKey(
+        Arena, on_delete=models.PROTECT, related_name="repasses", verbose_name="arena"
+    )
+    valor = models.DecimalField("valor (R$)", max_digits=12, decimal_places=2)
+    status = models.CharField(
+        "status", max_length=10, choices=StatusRepasse.choices, default=StatusRepasse.PAGO
+    )
+    referencia = models.CharField("referência no gateway", max_length=100, blank=True)
+
+    class Meta:
+        verbose_name = "repasse"
+        verbose_name_plural = "repasses"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Repasse · {self.arena} · {self.valor}"
+
+
+class LedgerEntry(ValidatedModel):
+    """Lançamento imutável do razão. Correções entram como novos lançamentos (estornos).
+
+    O valor é positivo quando entra na carteira e negativo quando sai. Para as
+    arenas, ``disponivel_em`` separa o saldo "a liberar" do saldo disponível.
+    """
+
+    conta = models.ForeignKey(
+        LedgerAccount, on_delete=models.PROTECT, related_name="lancamentos", verbose_name="carteira"
+    )
+    tipo = models.CharField("tipo", max_length=20, choices=TipoLancamento.choices)
+    valor = models.DecimalField("valor (R$)", max_digits=12, decimal_places=2)
+    descricao = models.CharField("descrição", max_length=255)
+    disponivel_em = models.DateTimeField(
+        "disponível em",
+        default=timezone.now,
+        help_text="A partir de quando o valor pode ser repassado.",
+    )
+    partida = models.ForeignKey(
+        OpenMatch,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="lancamentos",
+        verbose_name="partida",
+    )
+    inscricao = models.ForeignKey(
+        Booking,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="lancamentos",
+        verbose_name="inscrição",
+    )
+    pagamento = models.ForeignKey(
+        Payment,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="lancamentos",
+        verbose_name="pagamento",
+    )
+    repasse = models.ForeignKey(
+        Payout,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="lancamentos",
+        verbose_name="repasse",
+    )
+
+    class Meta:
+        verbose_name = "lançamento"
+        verbose_name_plural = "lançamentos"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["conta", "disponivel_em"], name="lancamento_conta_disp_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.get_tipo_display()} · {self.valor}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise ValidationError("Lançamentos do razão são imutáveis; registre um estorno.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
+        raise ValidationError("Lançamentos do razão não podem ser apagados.")

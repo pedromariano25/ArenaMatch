@@ -8,9 +8,9 @@ from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
-from arena.models import Booking, CustomUser, OpenMatch, StatusHorario, StatusPagamento
+from arena.models import Booking, CustomUser, OpenMatch, StatusHorario, StatusInscricao, StatusPartida
 
-from .fabricas import criar_arena, criar_gestor, criar_horario, criar_jogador, criar_partida, criar_quadra
+from .fabricas import comprar, criar_arena, criar_gestor, criar_horario, criar_jogador, criar_partida, criar_quadra
 
 PERMISSOES_GESTOR = [
     "view_arena",
@@ -33,7 +33,8 @@ class AdminSuperusuarioTest(TestCase):
         urls = [
             reverse("admin:index"),
             *[reverse(f"admin:arena_{modelo}_changelist") for modelo in ("arena", "court", "timeslot", "openmatch", "booking", "customuser")],
-            *[reverse(f"admin:arena_{modelo}_add") for modelo in ("arena", "court", "timeslot", "openmatch", "booking", "customuser")],
+            *[reverse(f"admin:arena_{modelo}_changelist") for modelo in ("payment", "ledgeraccount", "ledgerentry", "payout", "waitlistentry")],
+            *[reverse(f"admin:arena_{modelo}_add") for modelo in ("arena", "court", "timeslot", "openmatch", "customuser")],
             reverse("admin:arena_openmatch_change", args=[self.partida.pk]),
             reverse("admin:arena_booking_change", args=[self.inscricao.pk]),
             reverse("admin:arena_arena_change", args=[self.partida.time_slot.court.arena_id]),
@@ -49,15 +50,22 @@ class AdminSuperusuarioTest(TestCase):
         self.assertContains(resposta, "Resumo dos próximos 7 dias")
         self.assertContains(resposta, '<span class="valor">1/4</span>', html=True)
 
-    def test_action_marcar_como_pago(self):
+    def test_inscricoes_sao_somente_leitura(self):
+        self.assertEqual(self.client.get(reverse("admin:arena_booking_add")).status_code, 403)
+        resposta = self.client.get(reverse("admin:arena_booking_change", args=[self.inscricao.pk]))
+        self.assertNotContains(resposta, 'name="_save"')
+
+    def test_action_cancelar_partidas_reembolsa(self):
+        paga = comprar(self.partida)
         resposta = self.client.post(
-            reverse("admin:arena_booking_changelist"),
-            {"action": "marcar_como_pago", ACTION_CHECKBOX_NAME: [self.inscricao.pk]},
+            reverse("admin:arena_openmatch_changelist"),
+            {"action": "cancelar_partidas", ACTION_CHECKBOX_NAME: [self.partida.pk]},
             follow=True,
         )
-        self.assertEqual(resposta.status_code, 200)
-        self.inscricao.refresh_from_db()
-        self.assertEqual(self.inscricao.status_pagamento, StatusPagamento.PAGO)
+        self.assertContains(resposta, "1 jogador(es) reembolsado(s)")
+        self.partida.refresh_from_db()
+        paga.refresh_from_db()
+        self.assertEqual((self.partida.status, paga.status), (StatusPartida.CANCELADA, StatusInscricao.REEMBOLSADA))
 
 
 class AdminConversaoTest(TestCase):
@@ -95,8 +103,8 @@ class AdminConversaoTest(TestCase):
         partida = OpenMatch.objects.get()
         self.assertEqual(partida.time_slot, self.ocioso)
         self.assertEqual(
-            (partida.vagas_totais, partida.vagas_disponiveis, partida.valor_total_aluguel, partida.nivel_competitividade),
-            (10, 10, Decimal("275.00"), "avancado"),
+            (partida.vagas_totais, partida.vagas_goleiro, partida.vagas_disponiveis, partida.valor_total_aluguel, partida.nivel_competitividade),
+            (10, 2, 10, Decimal("275.00"), "avancado"),
         )
 
 

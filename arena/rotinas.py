@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from django.core.management import call_command
 from django.db import connections
 
+from . import checkout, partidas, razao
+
 Funcao = Callable[[], None]
 
 
@@ -60,6 +62,26 @@ def rotina(*, minutos: int, descricao: str) -> Callable[[Funcao], Funcao]:
 
 
 # --- Rotinas -----------------------------------------------------------------
+
+
+@rotina(minutos=1, descricao="Expira reservas sem pagamento no prazo e devolve as vagas.")
+def expirar_reservas() -> None:
+    checkout.expirar_reservas()
+
+
+@rotina(minutos=5, descricao="Cancela e reembolsa partidas sem o mínimo de jogadores no prazo.")
+def conferir_quorum() -> None:
+    partidas.conferir_quorum()
+
+
+@rotina(minutos=15, descricao="Encerra as partidas que já terminaram.")
+def finalizar_partidas() -> None:
+    partidas.finalizar_partidas()
+
+
+@rotina(minutos=60, descricao="Repassa às arenas o saldo já liberado.")
+def gerar_repasses() -> None:
+    razao.gerar_repasses()
 
 
 @rotina(minutos=24 * 60, descricao="Apaga do banco as sessões de login expiradas.")

@@ -1,12 +1,17 @@
-"""Vitrine web B2C: feed, detalhes, reserva, comprovante, cancelamento e cadastro."""
+"""Vitrine web B2C: feed, detalhes, checkout, pagamento, comprovante, cancelamento e cadastro."""
+
+from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.messages import get_messages
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
-from arena.models import Booking, CustomUser, NivelCompetitividade, StatusPagamento
+from arena import razao
+from arena.models import Booking, CustomUser, NivelCompetitividade, StatusInscricao, WaitlistEntry
 
-from .fabricas import criar_gestor, criar_jogador, criar_partida
+from .fabricas import comprar, criar_gestor, criar_jogador, criar_partida, mover_partida
 
 
 class VitrineTest(TestCase):
@@ -26,70 +31,106 @@ class VitrineTest(TestCase):
 
     def test_detalhe_da_partida(self):
         resposta = self.client.get(self.partida.get_absolute_url())
-        self.assertContains(resposta, "Reservar minha vaga")
-        # R$ 25,00 da quadra + 15% de taxa de conveniência.
+        self.assertContains(resposta, "Garantir vaga")
+        # R$ 25,00 da quadra + 15% de taxa de serviço; no cartão, 5% a mais.
         self.assertContains(resposta, "R$ 28,75")
+        self.assertContains(resposta, "R$ 30,19 no cartão")
+        self.assertNotContains(resposta, "direto na arena")
 
 
-class ReservaTest(TestCase):
+class CheckoutTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.jogador = criar_jogador()
-        cls.partida = criar_partida(vagas=1)
-        cls.url_reserva = reverse("arena:reservar", args=[cls.partida.pk])
+        cls.partida = criar_partida(vagas=3, vagas_goleiro=1)
+        cls.url = reverse("arena:checkout", args=[cls.partida.pk])
 
-    def test_reserva_exige_login(self):
-        resposta = self.client.get(self.url_reserva)
-        self.assertRedirects(resposta, f"{reverse('arena:entrar')}?next={self.url_reserva}")
+    def test_exige_login(self):
+        resposta = self.client.get(self.url)
+        self.assertRedirects(resposta, f"{reverse('arena:entrar')}?next={self.url}")
 
-    def test_confirmacao_e_criacao_da_inscricao(self):
+    def test_pix_leva_ao_pagamento_e_a_simulacao_confirma(self):
         self.client.force_login(self.jogador)
-        self.assertContains(self.client.get(self.url_reserva), "Confirmar reserva")
-
-        resposta = self.client.post(self.url_reserva)
+        self.assertContains(self.client.get(self.url), "Garanta sua vaga")
+        resposta = self.client.post(self.url, {"posicao": "linha", "metodo": "pix"})
         inscricao = Booking.objects.get(player=self.jogador)
-        self.assertRedirects(resposta, reverse("arena:inscricao", args=[inscricao.pk]))
-        comprovante = self.client.get(resposta.url)
+        self.assertRedirects(resposta, reverse("arena:pagamento", args=[inscricao.pk]))
+        pagina = self.client.get(resposta.url)
+        self.assertContains(pagina, "Pix copia e cola")
+        self.assertContains(pagina, "Simular pagamento aprovado")
+
+        self.client.post(reverse("arena:simular_pagamento", args=[inscricao.pk]))
+        comprovante = self.client.get(reverse("arena:inscricao", args=[inscricao.pk]))
         self.assertContains(comprovante, "Vaga garantida!")
         self.assertContains(comprovante, "calendar.google.com")
-        self.partida.refresh_from_db()
-        self.assertEqual(self.partida.vagas_disponiveis, 0)
+
+    def test_cartao_confirma_direto(self):
+        self.client.force_login(self.jogador)
+        resposta = self.client.post(self.url, {"posicao": "linha", "metodo": "cartao"})
+        inscricao = Booking.objects.get(player=self.jogador)
+        self.assertRedirects(resposta, reverse("arena:inscricao", args=[inscricao.pk]))
+        self.assertEqual(inscricao.status, StatusInscricao.CONFIRMADA)
+
+    def test_goleiro_nao_paga(self):
+        self.client.force_login(self.jogador)
+        self.client.post(self.url, {"posicao": "goleiro"})
+        inscricao = Booking.objects.get(player=self.jogador)
+        self.assertEqual((inscricao.status, inscricao.valor_total), (StatusInscricao.CONFIRMADA, Decimal("0")))
 
     def test_partida_lotada_mostra_mensagem(self):
-        Booking.objects.create(open_match=self.partida, player=criar_jogador())
+        for _ in range(2):
+            comprar(self.partida)
         self.client.force_login(self.jogador)
-        resposta = self.client.post(self.url_reserva, follow=True)
-        self.assertRedirects(resposta, self.partida.get_absolute_url())
+        resposta = self.client.post(self.url, {"posicao": "linha", "metodo": "pix"}, follow=True)
         mensagens = [str(m) for m in get_messages(resposta.wsgi_request)]
         self.assertIn("Esta partida está lotada.", mensagens)
 
     def test_conta_que_nao_e_jogador_e_avisada(self):
         self.client.force_login(criar_gestor())
-        resposta = self.client.get(self.url_reserva, follow=True)
+        resposta = self.client.get(self.url, follow=True)
         self.assertContains(resposta, "Sua conta não é de jogador")
         self.assertFalse(Booking.objects.exists())
 
     def test_comprovante_de_outro_jogador_e_404(self):
-        inscricao = Booking.objects.create(open_match=self.partida, player=criar_jogador())
+        inscricao = comprar(self.partida)
         self.client.force_login(self.jogador)
         self.assertEqual(self.client.get(reverse("arena:inscricao", args=[inscricao.pk])).status_code, 404)
 
-    def test_cancelar_e_minhas_inscricoes(self):
-        inscricao = Booking.objects.create(open_match=self.partida, player=self.jogador)
-        self.client.force_login(self.jogador)
-        self.assertContains(self.client.get(reverse("arena:minhas_inscricoes")), self.partida.time_slot.intervalo)
 
+class CancelamentoWebTest(TestCase):
+    def setUp(self):
+        self.jogador = criar_jogador()
+        self.partida = criar_partida(vagas=2)
+        mover_partida(self.partida, timezone.now() + timedelta(days=2))
+        self.client.force_login(self.jogador)
+
+    def test_cancelar_vira_credito_e_aparece_em_minhas_inscricoes(self):
+        inscricao = comprar(self.partida, self.jogador)
+        self.assertContains(self.client.get(reverse("arena:minhas_inscricoes")), self.partida.time_slot.intervalo)
         resposta = self.client.post(reverse("arena:cancelar_inscricao", args=[inscricao.pk]))
         self.assertRedirects(resposta, reverse("arena:minhas_inscricoes"))
-        self.assertFalse(Booking.objects.exists())
+        self.assertEqual(razao.saldo_do_jogador(self.jogador), Decimal("28.75"))
+        self.assertContains(self.client.get(reverse("arena:minhas_inscricoes")), "R$ 28,75")
 
-    def test_inscricao_paga_nao_pode_ser_cancelada(self):
-        inscricao = Booking.objects.create(
-            open_match=self.partida, player=self.jogador, status_pagamento=StatusPagamento.PAGO
-        )
-        self.client.force_login(self.jogador)
+    def test_perto_do_jogo_so_repassa(self):
+        mover_partida(self.partida, timezone.now() + timedelta(hours=5))
+        inscricao = comprar(self.partida, self.jogador)
         self.client.post(reverse("arena:cancelar_inscricao", args=[inscricao.pk]))
-        self.assertTrue(Booking.objects.filter(pk=inscricao.pk).exists())
+        inscricao.refresh_from_db()
+        self.assertEqual(inscricao.status, StatusInscricao.CONFIRMADA)
+        self.client.post(reverse("arena:repassar_vaga", args=[inscricao.pk]))
+        inscricao.refresh_from_db()
+        self.assertTrue(inscricao.em_repasse)
+
+    def test_lista_de_espera_em_partida_lotada(self):
+        comprar(self.partida)
+        comprar(self.partida)
+        url = reverse("arena:lista_de_espera", args=[self.partida.pk])
+        self.assertContains(self.client.get(self.partida.get_absolute_url()), "Entrar na lista de espera")
+        self.client.post(url)
+        self.assertTrue(WaitlistEntry.objects.filter(jogador=self.jogador).exists())
+        self.client.post(url, {"acao": "sair"})
+        self.assertFalse(WaitlistEntry.objects.exists())
 
 
 class ContaTest(TestCase):

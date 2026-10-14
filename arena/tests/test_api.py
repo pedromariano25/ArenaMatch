@@ -7,9 +7,19 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from arena.models import Booking, CustomUser, NivelCompetitividade, StatusHorario, StatusPagamento, TimeSlot
+from arena.models import CustomUser, NivelCompetitividade, StatusHorario, StatusInscricao, TimeSlot
 
-from .fabricas import amanha, criar_gestor, criar_horario, criar_jogador, criar_partida, criar_quadra
+from .fabricas import (
+    amanha,
+    comprar,
+    criar_gestor,
+    criar_horario,
+    criar_jogador,
+    criar_partida,
+    criar_quadra,
+    inscrever,
+    mover_partida,
+)
 
 
 class ApiPartidasTest(APITestCase):
@@ -24,7 +34,7 @@ class ApiPartidasTest(APITestCase):
         cls.outra = criar_partida(horario=criar_horario(cls.quadra, time(21), time(22), status=StatusHorario.OCIOSO))
         passada = criar_partida(horario=criar_horario(cls.quadra, time(8), time(9), status=StatusHorario.OCIOSO))
         TimeSlot.objects.filter(pk=passada.time_slot_id).update(data=timezone.localdate() - timedelta(days=1))
-        Booking.objects.create(open_match=cls.partida, player=criar_jogador(first_name="Lucas", last_name="Oliveira"))
+        inscrever(cls.partida, criar_jogador(first_name="Lucas", last_name="Oliveira"))
 
     def test_raiz_lista_endpoints(self):
         resposta = self.client.get(reverse("api:raiz"))
@@ -39,6 +49,7 @@ class ApiPartidasTest(APITestCase):
         self.assertEqual(primeira["id"], str(self.partida.pk))
         self.assertEqual((primeira["hora_inicio"], primeira["vagas_disponiveis"]), ("19:00", 2))
         self.assertEqual(primeira["arena"]["nome"], self.quadra.arena.nome)
+        self.assertEqual(primeira["precos"], {"linha_pix": "28.75", "linha_cartao": "30.19", "goleiro": "0.00"})
 
     def test_filtros(self):
         url = reverse("api:partidas")
@@ -71,26 +82,31 @@ class ApiInscricaoTest(APITestCase):
         self.client.force_authenticate(criar_gestor())
         self.assertEqual(self.client.post(self.url).status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_inscricao_e_regras_de_negocio(self):
+    def test_checkout_pix_e_regras_de_negocio(self):
         self.client.force_authenticate(self.jogador)
-        resposta = self.client.post(self.url)
+        resposta = self.client.post(self.url, {"metodo_pagamento": "pix"})
         self.assertEqual(resposta.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(resposta.data["status_pagamento"], StatusPagamento.PENDENTE)
+        self.assertEqual(resposta.data["status"], StatusInscricao.AGUARDANDO_PAGAMENTO)
+        self.assertEqual(resposta.data["valor_total"], "28.75")
+        self.assertIn("ARENAMATCH-TESTE", resposta.data["pagamento"]["pix_copia_e_cola"])
         self.assertEqual(resposta.data["partida"]["vagas_disponiveis"], 0)
 
         duplicada = self.client.post(self.url)
         self.assertEqual(duplicada.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("lotada", str(duplicada.data["non_field_errors"]))
+
+        simulado = self.client.post(reverse("api:simular_pagamento", args=[resposta.data["id"]]))
+        self.assertEqual(simulado.data["status"], StatusInscricao.CONFIRMADA)
 
         self.client.force_authenticate(criar_jogador())
-        lotada = self.client.post(self.url)
+        lotada = self.client.post(self.url, {"metodo_pagamento": "cartao"})
         self.assertEqual(lotada.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(str(lotada.data["non_field_errors"][0]), "Esta partida está lotada.")
 
-    def test_minhas_inscricoes_e_cancelamento(self):
+    def test_minhas_inscricoes_cancelamento_e_carteira(self):
+        mover_partida(self.partida, timezone.now() + timedelta(days=2))
         self.client.force_authenticate(self.jogador)
-        inscricao_id = self.client.post(self.url).data["id"]
-        Booking.objects.create(open_match=criar_partida(vagas=5), player=criar_jogador())  # de outro jogador
+        inscricao_id = self.client.post(self.url, {"metodo_pagamento": "cartao"}).data["id"]
+        comprar(criar_partida(vagas=5))  # de outro jogador
 
         lista = self.client.get(reverse("api:minhas_inscricoes"))
         self.assertEqual([item["id"] for item in lista.data["results"]], [inscricao_id])
@@ -99,14 +115,25 @@ class ApiInscricaoTest(APITestCase):
         self.assertEqual(self.client.delete(url).status_code, status.HTTP_204_NO_CONTENT)
         self.partida.refresh_from_db()
         self.assertEqual(self.partida.vagas_disponiveis, 1)
+        carteira = self.client.get(reverse("api:carteira"))
+        self.assertEqual(carteira.data["saldo"], "30.19")
+        self.assertEqual(carteira.data["movimentacoes"][0]["tipo"], "credito")
 
-    def test_cancelar_inscricao_paga_retorna_400(self):
-        inscricao = Booking.objects.create(
-            open_match=self.partida, player=self.jogador, status_pagamento=StatusPagamento.PAGO
-        )
+    def test_cancelar_perto_do_jogo_retorna_400_e_repasse_funciona(self):
+        mover_partida(self.partida, timezone.now() + timedelta(hours=5))
+        inscricao = comprar(self.partida, self.jogador)
         self.client.force_authenticate(self.jogador)
         resposta = self.client.delete(reverse("api:inscricao", args=[inscricao.pk]))
         self.assertEqual(resposta.status_code, status.HTTP_400_BAD_REQUEST)
+        repasse = self.client.post(reverse("api:repassar", args=[inscricao.pk]))
+        self.assertTrue(repasse.data["em_repasse"])
+
+    def test_lista_de_espera(self):
+        comprar(self.partida)
+        self.client.force_authenticate(self.jogador)
+        url = reverse("api:lista_de_espera", args=[self.partida.pk])
+        self.assertEqual(self.client.post(url).status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.client.delete(url).status_code, status.HTTP_204_NO_CONTENT)
 
 
 class ApiCadastroETokenTest(APITestCase):

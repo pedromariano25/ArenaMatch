@@ -2,8 +2,12 @@
 
 Uso: ``python manage.py populate_db``. ATENÇÃO: apaga TODOS os dados antes. Só roda
 com ``DEBUG=True`` (ou ``--force``), porque cria contas com senhas fracas e conhecidas.
-Todos os registros passam por ``save()``, ou seja, pelas mesmas regras de negócio
-do sistema (agenda sem conflitos, vagas, lotação etc.).
+
+Tudo passa pelas mesmas regras e serviços do sistema: agenda sem conflitos,
+checkout com o gateway simulado, cancelamentos com crédito, mínimo de jogadores,
+encerramento das partidas e repasses. Para gerar um histórico verdadeiro (jogos
+finalizados, saldo liberado e repasses), os últimos dias são simulados com um
+relógio controlado que avança e roda as rotinas como o agendador faria.
 """
 
 import random
@@ -13,15 +17,21 @@ from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth.models import Group, Permission
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import transaction
+from django.db.models import F
 from django.db.models.signals import post_delete
+from django.test.utils import override_settings
 from django.utils import timezone
 from django.utils.text import slugify
 
+from arena import checkout, partidas, razao
+from arena.gestao import vagas_goleiro_sugeridas
 from arena.models import (
     MEIA_NOITE,
     STATUS_HORARIO_LIVRE,
@@ -29,14 +39,22 @@ from arena.models import (
     Booking,
     Court,
     CustomUser,
+    LedgerAccount,
+    LedgerEntry,
+    MetodoPagamento,
+    MotivoCancelamento,
     NivelCompetitividade,
     OpenMatch,
+    Payment,
+    Payout,
+    Posicao,
     StatusHorario,
-    StatusPagamento,
+    StatusInscricao,
     StatusPartida,
     TimeSlot,
     TipoPiso,
     TipoReserva,
+    WaitlistEntry,
     devolver_vaga_apos_exclusao,
 )
 from arena.validators import digitos_verificadores_cnpj, digitos_verificadores_cpf
@@ -46,9 +64,11 @@ SENHA_GESTOR = "gestor123"
 SENHA_JOGADOR = "jogador123"
 NOME_GRUPO_GESTORES = "Gestores"
 
-PARTIDAS_POR_ARENA = 6
-PARTIDAS_LOTADAS = 3
 DIAS_DE_AGENDA = 7
+DIAS_DE_HISTORICO = 6
+PARTIDAS_POR_ARENA = 6
+PARTIDAS_PASSADAS_POR_DIA = 2
+PARTIDAS_LOTADAS = 3
 FAIXAS_DIA_UTIL = ((18, 19), (19, 20), (20, 21), (21, 22), (22, 23))
 FAIXAS_FIM_DE_SEMANA = ((9, 10), (10, 11), (11, 12), (16, 17), (17, 18), (18, 19), (19, 20))
 
@@ -117,6 +137,10 @@ JOGADORES = [
     ("Larissa", "Teixeira"),
     ("Rodrigo", "Moreira"),
     ("Beatriz", "Cardoso"),
+    ("Pedro Henrique", "Dias"),
+    ("Igor", "Monteiro"),
+    ("Caio", "Freitas"),
+    ("Renan", "Castro"),
 ]
 
 # Permissões do grupo Gestores. O escopo (só as próprias arenas) é aplicado pelo admin.
@@ -124,15 +148,16 @@ PERMISSOES_GESTOR = {
     "arena": ("view", "change"),
     "court": ("view", "add", "change", "delete"),
     "timeslot": ("view", "add", "change", "delete"),
-    "openmatch": ("view", "add", "change", "delete"),
-    "booking": ("view", "add", "change", "delete"),
+    "openmatch": ("view", "add", "change"),
+    "booking": ("view",),
 }
 
-PRECOS_POR_PISO = {
-    TipoPiso.SINTETICO: (20, 25, 30),
-    TipoPiso.SALAO: (15, 18, 20),
-    TipoPiso.AREIA: (20, 25),
-    TipoPiso.CAMPO: (30, 35, 40),
+# Aluguel por hora da quadra inteira, por tipo de piso.
+ALUGUEIS_POR_PISO = {
+    TipoPiso.SINTETICO: (220, 250, 280),
+    TipoPiso.SALAO: (150, 180),
+    TipoPiso.AREIA: (160, 200),
+    TipoPiso.CAMPO: (450, 520),
 }
 
 # (tipo de reserva, status, peso) dos horários futuros da agenda.
@@ -143,6 +168,29 @@ DISTRIBUICAO_AGENDA = (
     (TipoReserva.MENSALISTA, StatusHorario.CANCELADO, 5),
     (TipoReserva.AVULSO, StatusHorario.OCIOSO, 45),
 )
+
+_AGORA_REAL = timezone.now
+
+
+class Relogio:
+    """Relógio controlável: durante a simulação do passado, ``timezone.now()`` vem daqui."""
+
+    def __init__(self) -> None:
+        self.momento: datetime | None = None
+
+    def agora(self) -> datetime:
+        return self.momento or _AGORA_REAL()
+
+    @contextmanager
+    def no_passado(self) -> Iterator["Relogio"]:
+        with mock.patch("django.utils.timezone.now", side_effect=self.agora):
+            try:
+                yield self
+            finally:
+                self.momento = None
+
+    def ir_para(self, momento: datetime) -> None:
+        self.momento = momento
 
 
 @contextmanager
@@ -157,10 +205,14 @@ def _sem_recalculo_de_vagas() -> Iterator[None]:
         )
 
 
+def _momento(dia: date, hora: int, minuto: int = 0) -> datetime:
+    return timezone.make_aware(datetime.combine(dia, time(hora, minuto)))
+
+
 class Command(BaseCommand):
     help = (
-        "Apaga TODOS os dados e popula o banco com arenas, agenda, partidas abertas "
-        "e inscrições de demonstração."
+        "Apaga TODOS os dados e popula o banco com arenas, agenda, partidas, pagamentos "
+        "e histórico de demonstração."
     )
 
     def add_arguments(self, parser: CommandParser) -> None:
@@ -172,6 +224,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "--seed", type=int, default=2026, help="Semente aleatória (dados reproduzíveis)."
         )
+        parser.add_argument(
+            "--dias-de-historico",
+            type=int,
+            default=DIAS_DE_HISTORICO,
+            help="Quantos dias passados simular (jogos finalizados, repasses).",
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         if not settings.DEBUG and not options["force"]:
@@ -180,25 +238,39 @@ class Command(BaseCommand):
                 "Rode apenas com DEBUG=True (ou --force, nunca em produção)."
             )
         self.rng = random.Random(options["seed"])
-        self.agora = timezone.localtime()
         self.cpfs: set[str] = set()
+        self.relogio = Relogio()
+        self.dias_de_historico = options["dias_de_historico"]
 
-        with transaction.atomic():
+        # Sempre o gateway simulado (nunca cobra ninguém) e e-mails descartados.
+        with override_settings(
+            ARENAMATCH_GATEWAY_PAGAMENTO="arena.pagamentos.MockGateway",
+            ARENAMATCH_PERMITIR_GATEWAY_SIMULADO=True,
+            EMAIL_BACKEND="django.core.mail.backends.dummy.EmailBackend",
+        ), transaction.atomic():
             self._limpar_banco()
             grupo = self._criar_grupo_gestores()
             self._criar_superusuario()
-            demo, jogadores = self._criar_jogadores()
+            self.demo, self.jogadores = self._criar_jogadores()
             arenas = self._criar_arenas(grupo)
-            horarios_livres = self._criar_agenda(arenas)
-            partidas = self._criar_partidas(horarios_livres)
-            self._criar_inscricoes(partidas, jogadores, demo)
+            if self.dias_de_historico > 0:
+                with self.relogio.no_passado():
+                    self._simular_historico(arenas)
+            self._criar_presente(arenas)
+            # A data de inscrição acompanha o momento (simulado) em que a vaga foi comprada.
+            Booking.objects.update(data_inscricao=F("created_at"))
 
         self._imprimir_resumo()
 
     # --- Limpeza e contas ---------------------------------------------------
 
     def _limpar_banco(self) -> None:
-        """Apaga os dados na ordem exigida pelas FKs ``PROTECT`` (inscrições primeiro)."""
+        """Apaga os dados na ordem exigida pelas FKs ``PROTECT`` (razão e inscrições primeiro)."""
+        LedgerEntry.objects.all().delete()
+        Payout.objects.all().delete()
+        LedgerAccount.objects.all().delete()
+        Payment.objects.all().delete()
+        WaitlistEntry.objects.all().delete()
         with _sem_recalculo_de_vagas():
             Booking.objects.all().delete()
         OpenMatch.objects.all().delete()
@@ -272,7 +344,7 @@ class Command(BaseCommand):
         base = "".join(self.rng.choice(alfabeto) for _ in range(8)) + "0001"
         return base + digitos_verificadores_cnpj(base)
 
-    # --- Arenas, agenda e partidas -----------------------------------------
+    # --- Arenas e agenda ----------------------------------------------------
 
     def _criar_arenas(self, grupo: Group) -> list[Arena]:
         arenas = []
@@ -307,91 +379,160 @@ class Command(BaseCommand):
             faixas.append((time(23), MEIA_NOITE))
         return faixas
 
-    def _criar_agenda(self, arenas: list[Arena]) -> dict[Arena, list[TimeSlot]]:
-        """Cria a agenda dos próximos dias e devolve os horários livres e futuros por arena."""
-        livres: dict[Arena, list[TimeSlot]] = defaultdict(list)
-        hoje = self.agora.date()
-        for arena in arenas:
-            for quadra in arena.quadras.all():
-                for deslocamento in range(DIAS_DE_AGENDA):
-                    dia = hoje + timedelta(days=deslocamento)
-                    for inicio, fim in self._faixas_do_dia(arena, dia):
-                        horario = self._criar_horario(quadra, dia, inicio, fim)
-                        if horario.status in STATUS_HORARIO_LIVRE and not horario.ja_comecou:
-                            livres[arena].append(horario)
+    def _criar_agenda(self, arena: Arena, dias: list[date]) -> list[TimeSlot]:
+        """Cria a agenda da arena nos dias e devolve os horários livres e futuros."""
+        livres = []
+        agora = timezone.now()
+        for quadra in arena.quadras.all():
+            for dia in dias:
+                for inicio, fim in self._faixas_do_dia(arena, dia):
+                    comeca = timezone.make_aware(datetime.combine(dia, inicio))
+                    if comeca <= agora + timedelta(minutes=30):
+                        # Horários que já passaram ficam como reservas confirmadas (já jogadas).
+                        tipo, status = TipoReserva.MENSALISTA, StatusHorario.CONFIRMADO
+                    else:
+                        opcoes = [(tipo, status) for tipo, status, _ in DISTRIBUICAO_AGENDA]
+                        pesos = [peso for *_, peso in DISTRIBUICAO_AGENDA]
+                        tipo, status = self.rng.choices(opcoes, weights=pesos)[0]
+                    horario = TimeSlot.objects.create(
+                        court=quadra, data=dia, hora_inicio=inicio, hora_fim=fim, tipo_reserva=tipo, status=status
+                    )
+                    if status in STATUS_HORARIO_LIVRE and comeca > agora:
+                        livres.append(horario)
         return livres
 
-    def _criar_horario(self, quadra: Court, dia: date, inicio: time, fim: time) -> TimeSlot:
-        comeca = timezone.make_aware(datetime.combine(dia, inicio))
-        if comeca <= self.agora + timedelta(minutes=30):
-            # Horários que já passaram ficam como reservas confirmadas (já jogadas).
-            tipo, status = self.rng.choice(
-                [(TipoReserva.MENSALISTA, StatusHorario.CONFIRMADO), (TipoReserva.AVULSO, StatusHorario.CONFIRMADO)]
-            )
-        else:
-            opcoes = [(tipo, status) for tipo, status, _ in DISTRIBUICAO_AGENDA]
-            pesos = [peso for *_, peso in DISTRIBUICAO_AGENDA]
-            tipo, status = self.rng.choices(opcoes, weights=pesos)[0]
-        return TimeSlot.objects.create(
-            court=quadra, data=dia, hora_inicio=inicio, hora_fim=fim, tipo_reserva=tipo, status=status
+    def _abrir_partida(self, horario: TimeSlot) -> OpenMatch:
+        """Converte um horário livre em partida aberta, como faria o gestor na agenda."""
+        quadra = horario.court
+        vagas = quadra.capacidade_padrao
+        return OpenMatch.objects.create(
+            time_slot=horario,
+            vagas_totais=vagas,
+            vagas_goleiro=vagas_goleiro_sugeridas(vagas),
+            valor_total_aluguel=Decimal(self.rng.choice(ALUGUEIS_POR_PISO[quadra.tipo_piso])),
+            nivel_competitividade=self.rng.choices(list(NivelCompetitividade), weights=(45, 25, 30))[0],
         )
-
-    def _criar_partidas(self, livres: dict[Arena, list[TimeSlot]]) -> list[OpenMatch]:
-        """Converte horários livres em partidas abertas, como faria a action do admin."""
-        niveis = list(NivelCompetitividade)
-        partidas = []
-        for horarios in livres.values():
-            escolhidos = self.rng.sample(horarios, min(PARTIDAS_POR_ARENA, len(horarios)))
-            for horario in sorted(escolhidos, key=lambda h: (h.data, h.hora_inicio)):
-                quadra = horario.court
-                # Às vezes um grupo já tem parte dos jogadores e abre só as vagas restantes.
-                vagas = quadra.capacidade_padrao - self.rng.choice((0, 0, 0, 2, 4))
-                partidas.append(
-                    OpenMatch.objects.create(
-                        time_slot=horario,
-                        vagas_totais=vagas,
-                        valor_total_aluguel=Decimal(self.rng.choice(PRECOS_POR_PISO[quadra.tipo_piso])) * vagas,
-                        nivel_competitividade=self.rng.choices(niveis, weights=(45, 25, 30))[0],
-                    )
-                )
-        return partidas
 
     # --- Inscrições ----------------------------------------------------------
 
-    def _criar_inscricoes(
-        self, partidas: list[OpenMatch], jogadores: list[CustomUser], demo: CustomUser
-    ) -> None:
-        candidatas = [p for p in partidas if p.vagas_totais <= len(jogadores)]
-        lotadas = set(self.rng.sample(candidatas, min(PARTIDAS_LOTADAS, len(candidatas))))
-        for partida in partidas:
-            if partida in lotadas:
-                quantidade = partida.vagas_totais
-            else:
-                maximo = min(partida.vagas_totais - 2, len(jogadores), round(partida.vagas_totais * 0.85))
-                quantidade = self.rng.randint(1, max(1, maximo))
-            for jogador in self.rng.sample(jogadores, quantidade):
-                self._inscrever(partida, jogador, self.rng.choices(
-                    (StatusPagamento.PAGO, StatusPagamento.PENDENTE), weights=(60, 40)
-                )[0])
+    def _metodo(self) -> str:
+        return self.rng.choices((MetodoPagamento.PIX, MetodoPagamento.CARTAO), weights=(75, 25))[0]
 
-        abertas = [p for p in partidas if p not in lotadas]
-        # Desistências já reembolsadas: ficam no histórico e não ocupam vaga.
+    def _comprar(self, partida: OpenMatch, jogador: CustomUser, posicao: str = Posicao.LINHA, metodo: str | None = None, pagar: bool = True) -> Booking | None:
+        """Faz o checkout como o jogador faria; com ``pagar``, aprova o Pix na hora."""
+        try:
+            inscricao = checkout.iniciar_checkout(partida, jogador, posicao=posicao, metodo=metodo or self._metodo())
+            if pagar and inscricao.status == StatusInscricao.AGUARDANDO_PAGAMENTO:
+                inscricao = checkout.simular_pagamento(inscricao)
+        except ValidationError:
+            return None
+        return inscricao
+
+    def _preencher(self, partida: OpenMatch, quantidade: int, excluir: set | None = None) -> list[Booking]:
+        """Vende ``quantidade`` vagas de linha e as vagas de goleiro da partida."""
+        candidatos = [j for j in self.jogadores if not excluir or j.pk not in excluir]
+        self.rng.shuffle(candidatos)
+        compradas = []
+        for jogador in candidatos[: partida.vagas_goleiro]:
+            if inscricao := self._comprar(partida, jogador, Posicao.GOLEIRO):
+                compradas.append(inscricao)
+        for jogador in candidatos[partida.vagas_goleiro :][:quantidade]:
+            if inscricao := self._comprar(partida, jogador):
+                compradas.append(inscricao)
+        return compradas
+
+    # --- Histórico (passado simulado) ---------------------------------------
+
+    def _simular_historico(self, arenas: list[Arena]) -> None:
+        """Simula os últimos dias: vendas, cancelamentos, quórum, encerramento e repasses."""
+        hoje = timezone.localdate()
+        dias = [hoje - timedelta(days=n) for n in range(self.dias_de_historico, 0, -1)]
+        self.relogio.ir_para(_momento(dias[0] - timedelta(days=3), 9))
+
+        partidas_passadas: list[OpenMatch] = []
+        for arena in arenas:
+            livres = self._criar_agenda(arena, dias)
+            por_dia: dict[date, list[TimeSlot]] = defaultdict(list)
+            for horario in livres:
+                por_dia[horario.data].append(horario)
+            for dia in dias:
+                for horario in self.rng.sample(por_dia[dia], min(PARTIDAS_PASSADAS_POR_DIA, len(por_dia[dia]))):
+                    partidas_passadas.append(self._abrir_partida(horario))
+
+        sem_quorum = self.rng.choice(partidas_passadas)
+        for partida in partidas_passadas:
+            if partida is sem_quorum:
+                self._preencher(partida, 2)
+                continue
+            vendidas = self._preencher(partida, self.rng.randint(partida.minimo_jogadores, partida.vagas_linha))
+            pagas = [i for i in vendidas if not i.gratuita]
+            # Desistências com mais de 24h de antecedência viram crédito.
+            if pagas and self.rng.random() < 0.3:
+                checkout.cancelar_inscricao(self.rng.choice(pagas))
+        # O jogador de demonstração já jogou e também desistiu de uma partida (e tem crédito).
+        jogadas = [p for p in partidas_passadas if p is not sem_quorum][:2]
+        for partida in jogadas:
+            self._comprar(partida, self.demo, metodo=MetodoPagamento.PIX)
+        if desistencia := self._comprar(partidas_passadas[-1], self.demo, metodo=MetodoPagamento.CARTAO):
+            checkout.cancelar_inscricao(desistencia)
+
+        # O tempo passa: prazos do mínimo de jogadores, fim dos jogos e repasses.
+        eventos = sorted(
+            [(p.prazo_quorum, "quorum") for p in partidas_passadas]
+            + [(p.time_slot.fim + timedelta(minutes=5), "fim") for p in partidas_passadas]
+            + [(_momento(dia, 6), "repasse") for dia in dias + [hoje]]
+        )
+        for momento, evento in eventos:
+            if momento >= _AGORA_REAL():
+                continue
+            self.relogio.ir_para(momento)
+            if evento == "quorum":
+                partidas.conferir_quorum()
+            elif evento == "fim":
+                partidas.finalizar_partidas()
+            else:
+                razao.gerar_repasses()
+
+    # --- Presente ------------------------------------------------------------
+
+    def _criar_presente(self, arenas: list[Arena]) -> None:
+        """Agenda dos próximos dias com partidas em vários estágios de venda."""
+        hoje = timezone.localdate()
+        dias = [hoje + timedelta(days=n) for n in range(DIAS_DE_AGENDA)]
+        partidas_futuras: list[OpenMatch] = []
+        for arena in arenas:
+            livres = self._criar_agenda(arena, dias)
+            escolhidos = self.rng.sample(livres, min(PARTIDAS_POR_ARENA, len(livres)))
+            partidas_futuras += [self._abrir_partida(h) for h in sorted(escolhidos, key=lambda h: (h.data, h.hora_inicio))]
+
+        candidatas = [p for p in partidas_futuras if p.vagas_linha <= len(self.jogadores) - p.vagas_goleiro]
+        lotadas = set(self.rng.sample(candidatas, min(PARTIDAS_LOTADAS, len(candidatas))))
+        for partida in partidas_futuras:
+            if partida in lotadas:
+                inscritos = self._preencher(partida, partida.vagas_linha)
+                fila = [j for j in self.jogadores if j.pk not in {i.player_id for i in inscritos}]
+                for jogador in self.rng.sample(fila, min(2, len(fila))):
+                    checkout.entrar_na_lista_de_espera(partida, jogador)
+            else:
+                maximo = max(1, min(partida.vagas_linha - 2, round(partida.vagas_linha * 0.85)))
+                self._preencher(partida, self.rng.randint(1, maximo))
+
+        abertas = [p for p in partidas_futuras if p not in lotadas and p.status == StatusPartida.ABERTA]
+        # Alguns jogadores estão no meio do Pix (vaga reservada por 10 minutos).
         for partida in self.rng.sample(abertas, min(3, len(abertas))):
             inscritos = set(partida.inscricoes.values_list("player_id", flat=True))
-            desistente = next(j for j in jogadores if j.pk not in inscritos)
-            self._inscrever(partida, desistente, StatusPagamento.REEMBOLSADO)
+            if livre := next((j for j in self.jogadores if j.pk not in inscritos), None):
+                self._comprar(partida, livre, metodo=MetodoPagamento.PIX, pagar=False)
 
-        # A conta de demonstração já começa com duas partidas marcadas.
-        for partida, status in zip(abertas[:2], (StatusPagamento.PENDENTE, StatusPagamento.PAGO)):
-            self._inscrever(partida, demo, status)
+        # A conta de demonstração começa com duas partidas marcadas, uma paga com o crédito.
+        distantes = [p for p in abertas if p.time_slot.inicio > timezone.now() + timedelta(days=1)]
+        for partida, metodo in zip(distantes[:2], (MetodoPagamento.PIX, MetodoPagamento.CREDITO)):
+            if self._comprar(partida, self.demo, metodo=metodo) is None:
+                self._comprar(partida, self.demo, metodo=MetodoPagamento.PIX)
 
-    def _inscrever(self, partida: OpenMatch, jogador: CustomUser, status: str) -> Booking:
-        return Booking.objects.create(
-            open_match=partida,
-            player=jogador,
-            status_pagamento=status,
-            data_inscricao=self.agora - timedelta(minutes=self.rng.randint(30, 72 * 60)),
-        )
+        # Uma partida cancelada pela arena, com todos reembolsados.
+        if len(distantes) > 2:
+            partidas.cancelar_partida(distantes[-1], MotivoCancelamento.ARENA)
 
     # --- Saída ---------------------------------------------------------------
 
@@ -401,9 +542,14 @@ class Command(BaseCommand):
             ("Arenas", Arena.objects.count()),
             ("Quadras", Court.objects.count()),
             ("Horários na agenda", TimeSlot.objects.count()),
-            ("Partidas abertas", OpenMatch.objects.count()),
+            ("Partidas", OpenMatch.objects.count()),
             ("  - lotadas", OpenMatch.objects.filter(status=StatusPartida.LOTADA).count()),
+            ("  - finalizadas", OpenMatch.objects.filter(status=StatusPartida.FINALIZADA).count()),
+            ("  - canceladas", OpenMatch.objects.filter(status=StatusPartida.CANCELADA).count()),
             ("Inscrições", Booking.objects.count()),
+            ("Pagamentos", Payment.objects.count()),
+            ("Lançamentos no razão", LedgerEntry.objects.count()),
+            ("Repasses", Payout.objects.count()),
             ("Usuários", CustomUser.objects.count()),
         )
         for rotulo, total in contagens:
@@ -419,6 +565,6 @@ class Command(BaseCommand):
         for papel, login, senha in acessos:
             self.stdout.write(f"  {papel:<42}{login:<24}{senha}")
         self.stdout.write(
-            "\n  Vitrine: http://127.0.0.1:8000/  |  Painel: http://127.0.0.1:8000/admin/"
-            "  |  API: http://127.0.0.1:8000/api/\n"
+            "\n  Vitrine: http://127.0.0.1:8000/  |  Portal: http://127.0.0.1:8000/manager/"
+            "  |  Admin: http://127.0.0.1:8000/admin/\n"
         )

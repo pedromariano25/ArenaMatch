@@ -7,118 +7,113 @@
 <div>
   <p class="text-sm text-slate-500">{{ arena.nome }}</p>
   <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Financeiro</h1>
-  <p class="mt-1 text-sm text-slate-500">Confirme os pagamentos recebidos na arena e registre os reembolsos.</p>
+  <p class="mt-1 text-sm text-slate-500">Os jogadores pagam pelo app. O valor da quadra fica retido até o dia seguinte ao jogo e depois é repassado à arena.</p>
 </div>
 
-<dl class="mt-8 grid gap-4 sm:grid-cols-3">
+<dl class="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
   <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-    <dt class="text-sm font-medium text-slate-500">Recebido no mês</dt>
-    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.liquido_mes|brl }}</dd>
-    <dd class="mt-1 text-sm text-slate-500">{{ resumo.pagamentos_mes }} vaga{{ resumo.pagamentos_mes|pluralize }} paga{{ resumo.pagamentos_mes|pluralize }}</dd>
+    <dt class="text-sm font-medium text-slate-500">Disponível para repasse</dt>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.disponivel|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Transferido automaticamente</dd>
   </div>
   <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-    <dt class="text-sm font-medium text-slate-500">A receber</dt>
-    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.liquido_pendente|brl }}</dd>
-    <dd class="mt-1 text-sm text-slate-500">Pagamentos pendentes em partidas ativas</dd>
+    <dt class="text-sm font-medium text-slate-500">A liberar</dt>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.a_liberar|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Vagas pagas em jogos que ainda não aconteceram</dd>
   </div>
   <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-    <dt class="text-sm font-medium text-slate-500">Reembolsado no mês</dt>
-    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.reembolsado_mes|brl }}</dd>
-    <dd class="mt-1 text-sm text-slate-500">Vagas devolvidas aos jogadores</dd>
+    <dt class="text-sm font-medium text-slate-500">Repassado no mês</dt>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.repassado_mes|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Transferências para a conta da arena</dd>
+  </div>
+  <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <dt class="text-sm font-medium text-slate-500">Vendido no mês</dt>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ resumo.vendido_mes|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Valor da quadra em partidas do mês, já com estornos</dd>
   </div>
 </dl>
 
-<section class="mt-8 rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="titulo-inscricoes">
-  <div class="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-    <h2 id="titulo-inscricoes" class="text-base font-semibold text-slate-900">Inscrições</h2>
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <nav class="flex w-fit gap-1 rounded-lg bg-slate-100 p-1" aria-label="Status do pagamento">
-        {% for valor, rotulo in filtros_status %}
-          <a href="?status={{ valor }}&amp;periodo={{ periodo }}"{% if valor == status %} aria-current="page"{% endif %} class="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition {% if valor == status %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600 hover:text-slate-900{% endif %}">{{ rotulo }}</a>
-        {% endfor %}
-      </nav>
-      <form method="get">
-        <input type="hidden" name="status" value="{{ status }}">
-        <label for="filtro-periodo" class="sr-only">Período</label>
-        <select id="filtro-periodo" name="periodo" onchange="this.form.submit()" class="block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20">
-          {% for valor, rotulo in periodos %}<option value="{{ valor }}"{% if valor == periodo %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
-        </select>
-      </form>
-    </div>
-  </div>
-
-  {% if pagina.object_list %}
-    <div class="overflow-x-auto">
-      <table class="min-w-full text-sm">
-        <thead class="bg-slate-50 text-left text-xs font-medium text-slate-500">
-          <tr>
-            <th scope="col" class="px-5 py-3">Jogador</th>
-            <th scope="col" class="px-3 py-3">Partida</th>
-            <th scope="col" class="px-3 py-3 text-right">Repasse líquido</th>
-            <th scope="col" class="px-3 py-3">Pagamento</th>
-            <th scope="col" class="px-3 py-3">Inscrição</th>
-            <th scope="col" class="px-5 py-3 text-right"><span class="sr-only">Ações</span></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          {% for inscricao in pagina.object_list %}
-            {% with horario=inscricao.open_match.time_slot %}
-            <tr class="transition hover:bg-slate-50">
-              <td class="whitespace-nowrap px-5 py-3">
-                <div class="flex items-center gap-3">
-                  <span class="grid size-8 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">{{ inscricao.player.iniciais }}</span>
-                  <div>
-                    <p class="font-medium text-slate-900">{{ inscricao.player.get_full_name|default:inscricao.player.username }}</p>
-                    <p class="text-slate-500">{{ inscricao.player.telefone|default:inscricao.player.email }}</p>
-                  </div>
-                </div>
-              </td>
-              <td class="whitespace-nowrap px-3 py-3">
-                <p class="text-slate-900">{{ horario.data|date:"D, d/m" }} · <span class="tabular-nums">{{ horario.intervalo }}</span></p>
-                <p class="text-slate-500">{{ horario.court.nome_ou_numero }}</p>
-              </td>
-              <td class="whitespace-nowrap px-3 py-3 text-right font-medium text-slate-900 tabular-nums">{{ inscricao.valor_vaga|brl }}</td>
-              <td class="px-3 py-3">
-                <span class="inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status_pagamento|classes_pagamento }}">{{ inscricao.get_status_pagamento_display }}</span>
-              </td>
-              <td class="whitespace-nowrap px-3 py-3 text-slate-500 tabular-nums">{{ inscricao.data_inscricao|date:"d/m H:i" }}</td>
-              <td class="whitespace-nowrap px-5 py-3 text-right">
-                {% if inscricao.status_pagamento == "pendente" %}
-                  <form method="post" action="{% url 'gestor:pagamento' inscricao.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="status" value="pago">
-                    <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
-                    <button type="submit" class="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700">Marcar como pago</button>
-                  </form>
-                {% elif inscricao.status_pagamento == "pago" %}
-                  <form method="post" action="{% url 'gestor:pagamento' inscricao.pk %}" onsubmit="return confirm('Registrar o reembolso? A vaga volta a ficar disponível na partida.');">
-                    {% csrf_token %}
-                    <input type="hidden" name="status" value="reembolsado">
-                    <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
-                    <button type="submit" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">Reembolsar</button>
-                  </form>
-                {% else %}
-                  <span class="text-xs text-slate-400">—</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endwith %}
+<div class="mt-8 grid gap-6 xl:grid-cols-3">
+  <section class="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-2" aria-labelledby="titulo-extrato">
+    <div class="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+      <h2 id="titulo-extrato" class="text-base font-semibold text-slate-900">Extrato</h2>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <nav class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1" aria-label="Tipo de lançamento">
+          {% for valor, rotulo in filtros_tipo %}
+            <a href="?tipo={{ valor }}&amp;periodo={{ periodo }}"{% if valor == tipo %} aria-current="page"{% endif %} class="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition {% if valor == tipo %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600 hover:text-slate-900{% endif %}">{{ rotulo }}</a>
           {% endfor %}
-        </tbody>
-      </table>
+        </nav>
+        <form method="get">
+          <input type="hidden" name="tipo" value="{{ tipo }}">
+          <label for="filtro-periodo" class="sr-only">Período</label>
+          <select id="filtro-periodo" name="periodo" onchange="this.form.submit()" class="block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20">
+            {% for valor, rotulo in periodos %}<option value="{{ valor }}"{% if valor == periodo %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+          </select>
+        </form>
+      </div>
     </div>
 
-    {% if pagina.has_other_pages %}
-      <div class="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-500">
-        <p>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }} · {{ pagina.paginator.count }} inscrições</p>
-        <div class="flex gap-2">
-          {% if pagina.has_previous %}<a href="?status={{ status }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.previous_page_number }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50">Anterior</a>{% endif %}
-          {% if pagina.has_next %}<a href="?status={{ status }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.next_page_number }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50">Próxima</a>{% endif %}
-        </div>
+    {% if pagina.object_list %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-50 text-left text-xs font-medium text-slate-500">
+            <tr>
+              <th scope="col" class="px-5 py-3">Data</th>
+              <th scope="col" class="px-3 py-3">Lançamento</th>
+              <th scope="col" class="px-3 py-3">Disponível em</th>
+              <th scope="col" class="px-5 py-3 text-right">Valor</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for lancamento in pagina.object_list %}
+              <tr class="transition hover:bg-slate-50">
+                <td class="whitespace-nowrap px-5 py-3 text-slate-500 tabular-nums">{{ lancamento.created_at|date:"d/m H:i" }}</td>
+                <td class="px-3 py-3">
+                  <p class="font-medium text-slate-900">{{ lancamento.get_tipo_display }}</p>
+                  <p class="text-slate-500">{{ lancamento.descricao }}</p>
+                </td>
+                <td class="whitespace-nowrap px-3 py-3 tabular-nums">
+                  {% if lancamento.disponivel_em > agora %}<span class="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">{{ lancamento.disponivel_em|date:"d/m" }}</span>{% else %}<span class="text-slate-500">{{ lancamento.disponivel_em|date:"d/m" }}</span>{% endif %}
+                </td>
+                <td class="whitespace-nowrap px-5 py-3 text-right font-medium tabular-nums {% if lancamento.valor < 0 %}text-slate-500{% else %}text-slate-900{% endif %}">{{ lancamento.valor|brl }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
+
+      {% if pagina.has_other_pages %}
+        <div class="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-500">
+          <p>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }} · {{ pagina.paginator.count }} lançamentos</p>
+          <div class="flex gap-2">
+            {% if pagina.has_previous %}<a href="?tipo={{ tipo }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.previous_page_number }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50">Anterior</a>{% endif %}
+            {% if pagina.has_next %}<a href="?tipo={{ tipo }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.next_page_number }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50">Próxima</a>{% endif %}
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="px-5 py-12 text-center text-sm text-slate-500">Nenhum lançamento encontrado com estes filtros.</p>
     {% endif %}
-  {% else %}
-    <p class="px-5 py-12 text-center text-sm text-slate-500">Nenhuma inscrição encontrada com estes filtros.</p>
-  {% endif %}
-</section>
+  </section>
+
+  <section class="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm" aria-labelledby="titulo-repasses">
+    <div class="border-b border-slate-200 px-5 py-4">
+      <h2 id="titulo-repasses" class="text-base font-semibold text-slate-900">Histórico de repasses</h2>
+      <p class="mt-0.5 text-sm text-slate-500">Transferências do saldo liberado</p>
+    </div>
+    <ul class="divide-y divide-slate-100">
+      {% for repasse in repasses %}
+        <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+          <div>
+            <p class="font-medium text-slate-900">{{ repasse.created_at|date:"d/m/Y H:i" }}</p>
+            <p class="truncate font-mono text-xs text-slate-500">{{ repasse.referencia }}</p>
+          </div>
+          <span class="font-semibold text-slate-900 tabular-nums">{{ repasse.valor|brl }}</span>
+        </li>
+      {% empty %}
+        <li class="px-5 py-10 text-center text-sm text-slate-500">Nenhum repasse ainda.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
 {% endblock %}
