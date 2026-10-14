@@ -789,9 +789,8 @@ class Booking(ValidatedModel):
     def save(self, *args: Any, **kwargs: Any) -> None:
         """Valida e salva com a partida bloqueada e depois recalcula as vagas.
 
-        A partida é recarregada com ``select_for_update()`` para serializar
-        inscrições concorrentes na última vaga. No PostgreSQL, isso é feito por
-        bloqueio de linha. No SQLite, por ``transaction_mode=IMMEDIATE`` (settings).
+        A partida é recarregada com ``select_for_update()`` (bloqueio de linha no
+        PostgreSQL) para serializar inscrições concorrentes na última vaga.
         Na criação, os valores da vaga são copiados da partida.
         """
         with transaction.atomic():

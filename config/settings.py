@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -92,18 +93,20 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# PostgreSQL, informado pela URL de conexão (postgres://usuario:senha@host:porta/banco).
+# As travas de linha (select_for_update) que protegem a última vaga dependem dele.
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+if not DATABASE_URL:
+    raise ImproperlyConfigured(
+        'Defina DATABASE_URL no ambiente ou no arquivo .env (veja .env.example).'
+    )
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        'OPTIONS': {
-            # BEGIN IMMEDIATE: transações de escrita ficam serializadas no SQLite,
-            # evitando corridas (ex.: duas inscrições na última vaga) e erros
-            # "database is locked".
-            'transaction_mode': 'IMMEDIATE',
-        },
-    }
+    # Reaproveita conexões por até 10 minutos e confere se seguem válidas antes do uso.
+    'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, conn_health_checks=True),
 }
+if DATABASES['default']['ENGINE'] != 'django.db.backends.postgresql':
+    raise ImproperlyConfigured('DATABASE_URL precisa apontar para um banco PostgreSQL.')
 
 
 # Usuário customizado (UUID, papéis gestor/jogador, CPF e telefone).
