@@ -5,6 +5,9 @@
 > **Atualização posterior:** a interface B2B passou a ser o **Portal do Gestor
 > (ArenaManager)**, em `/manager/`, e a vitrine ganhou a identidade "Clean SaaS".
 > O Django Admin virou back-office interno. Os acessos e endereços atuais estão no README.
+>
+> **14/10/2026:** pagamento in-app, perfis e níveis, site em `/` e app em `/app/`.
+> Veja o [Relatório da madrugada](RELATORIO_MADRUGADA.md).
 
 ## Resumo
 
