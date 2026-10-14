@@ -689,7 +689,7 @@ class Command(BaseCommand):
             ("Superusuário", "admin", SENHA_ADMIN),
             *[(f"Gestor - {a['nome']}", a["gestor"][0], SENHA_GESTOR) for a in ARENAS],
             ("Jogador de demonstração", "jogador", SENHA_JOGADOR),
-            ("Jogador demo pelo celular (código na tela)", TELEFONE_DEMO, "—"),
+            ("Jogador demo pelo celular", TELEFONE_DEMO, "código exibido na tela"),
             ("Outros jogadores", "lucas.oliveira (etc.)", SENHA_JOGADOR),
         ]
         for papel, login, senha in acessos:
