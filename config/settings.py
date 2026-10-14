@@ -58,6 +58,10 @@ ARENAMATCH_GATEWAY_PAGAMENTO = os.environ.get(
 )
 ARENAMATCH_PERMITIR_GATEWAY_SIMULADO = _variavel_booleana('ARENAMATCH_PERMITIR_GATEWAY_SIMULADO', DEBUG)
 
+# SMS do login por telefone. Em desenvolvimento, o código só vai para o log
+# (e aparece na tela, para testar sem operadora).
+ARENAMATCH_SMS_BACKEND = os.environ.get('ARENAMATCH_SMS_BACKEND', 'arena.acesso.SmsConsole')
+
 # Endereço público do site, usado nos links dos e-mails.
 ARENAMATCH_URL_BASE = os.environ.get('ARENAMATCH_URL_BASE', 'http://127.0.0.1:8000')
 
@@ -136,7 +140,8 @@ if DATABASES['default']['ENGINE'] != 'django.db.backends.postgresql':
 AUTH_USER_MODEL = 'arena.CustomUser'
 
 # Autenticação da vitrine web (B2C).
-LOGIN_URL = 'arena:entrar'
+# O app entra pelo celular (código por SMS); usuário e senha ficam como alternativa.
+LOGIN_URL = 'arena:entrar_telefone'
 LOGIN_REDIRECT_URL = 'arena:vitrine'
 LOGOUT_REDIRECT_URL = 'arena:vitrine'
 

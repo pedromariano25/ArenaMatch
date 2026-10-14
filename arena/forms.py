@@ -93,6 +93,7 @@ class FiltroVitrineForm(forms.Form):
             ("", "Qualquer dia"),
             ("hoje", "Hoje"),
             ("amanha", "Amanhã"),
+            ("fim_de_semana", "Fim de semana"),
             ("semana", "Próximos 7 dias"),
         ],
     )
@@ -120,9 +121,13 @@ class FiltroVitrineForm(forms.Form):
             return {}
         dados = self.cleaned_data
         hoje = timezone.localdate()
+        sabado = hoje + timedelta(days=(5 - hoje.weekday()) % 7)
+        if hoje.weekday() == 6:
+            sabado = hoje - timedelta(days=1)  # domingo: o fim de semana é hoje
         intervalos = {
             "hoje": (hoje, hoje),
             "amanha": (hoje + timedelta(days=1), hoje + timedelta(days=1)),
+            "fim_de_semana": (max(sabado, hoje), sabado + timedelta(days=1)),
             "semana": (hoje, hoje + timedelta(days=6)),
         }
         de, ate = intervalos.get(dados["dia"], (None, None))
@@ -182,6 +187,8 @@ class ArenaConfigForm(forms.ModelForm):
             "hora_fechamento",
             "quorum_percentual",
             "horas_prazo_quorum",
+            "latitude",
+            "longitude",
         )
         widgets = {
             "hora_abertura": forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
@@ -317,4 +324,34 @@ class AvaliacaoPartidaForm(forms.Form):
 
     percepcao = forms.ChoiceField(
         label="Como foi o nível do jogo?", choices=PercepcaoNivel.choices, widget=forms.RadioSelect
+    )
+
+
+# --- Login por celular -----------------------------------------------------------
+
+
+class TelefoneForm(forms.Form):
+    """Passo 1: o celular que recebe o código."""
+
+    telefone = forms.CharField(
+        label="Celular com DDD",
+        max_length=20,
+        widget=forms.TextInput(attrs={"inputmode": "tel", "autocomplete": "tel", "placeholder": "(11) 91234-5678"}),
+    )
+
+
+class CodigoAcessoForm(forms.Form):
+    """Passo 2: o código recebido (e o nome, se for o primeiro acesso)."""
+
+    codigo = forms.CharField(
+        label="Código de 6 dígitos",
+        max_length=6,
+        min_length=6,
+        widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "one-time-code", "placeholder": "000000"}),
+    )
+    nome = forms.CharField(
+        label="Seu nome (no primeiro acesso)",
+        max_length=150,
+        required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "name"}),
     )

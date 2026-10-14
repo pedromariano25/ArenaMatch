@@ -39,6 +39,37 @@ _CLASSES_INSCRICAO = {
     "expirada": "bg-slate-100 text-slate-600 ring-slate-200",
 }
 
+# --- Tema escuro do app (Night Match) ---
+
+_CLASSES_CAMPO_ESCURO = (
+    "block w-full rounded-xl border bg-white/5 px-4 py-3 text-base text-zinc-100 "
+    "placeholder:text-zinc-500 focus:border-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400/30"
+)
+_CLASSES_NIVEL_ESCURO = {
+    "aberta": "bg-violet-400/15 text-violet-300 ring-violet-400/30",
+    "iniciante": "bg-cyan-400/15 text-cyan-300 ring-cyan-400/30",
+    "intermediario": "bg-amber-400/15 text-amber-300 ring-amber-400/30",
+    "avancado": "bg-rose-400/15 text-rose-300 ring-rose-400/30",
+}
+_CLASSES_INSCRICAO_ESCURO = {
+    "confirmada": "bg-lime-400/15 text-lime-300 ring-lime-400/30",
+    "aguardando_pagamento": "bg-amber-400/15 text-amber-300 ring-amber-400/30",
+    "reembolsada": "bg-cyan-400/15 text-cyan-300 ring-cyan-400/30",
+    "cancelada": "bg-white/5 text-zinc-400 ring-white/10",
+    "expirada": "bg-white/5 text-zinc-400 ring-white/10",
+}
+# Gradientes dos avatares: cada jogador tem sempre a mesma cor.
+_GRADIENTES_AVATAR = (
+    "from-lime-300 to-emerald-500",
+    "from-cyan-300 to-blue-500",
+    "from-fuchsia-300 to-purple-500",
+    "from-amber-200 to-orange-500",
+    "from-rose-300 to-pink-500",
+    "from-teal-200 to-cyan-500",
+    "from-indigo-300 to-violet-500",
+    "from-yellow-200 to-lime-400",
+)
+
 # Marca (ponto) que identifica o tipo de piso ao lado do rótulo.
 _COR_PISO = {
     "sintetico": "bg-emerald-600",
@@ -322,3 +353,54 @@ def link_google_agenda(partida: OpenMatch) -> str:
         "ctz": settings.TIME_ZONE,
     }
     return "https://calendar.google.com/calendar/render?" + urlencode(parametros)
+
+
+# --- Tema escuro do app (Night Match) ---
+
+
+@register.filter
+def estilizar_escuro(campo: BoundField) -> SafeString:
+    """Widget no estilo escuro do app do jogador."""
+    borda = "border-rose-400/60" if campo.errors else "border-white/10"
+    return campo.as_widget(attrs={"class": f"{_CLASSES_CAMPO_ESCURO} {borda}"})
+
+
+@register.filter
+def nivel_escuro(nivel: str) -> str:
+    return _CLASSES_NIVEL_ESCURO.get(nivel, _CLASSES_NIVEL_ESCURO["aberta"])
+
+
+@register.filter
+def inscricao_escuro(status: str) -> str:
+    return _CLASSES_INSCRICAO_ESCURO.get(status, _CLASSES_INSCRICAO_ESCURO["cancelada"])
+
+
+@register.filter
+def cor_avatar(usuario: object) -> str:
+    """Gradiente fixo por jogador (derivado do id), para os avatares de iniciais."""
+    chave = str(getattr(usuario, "pk", usuario) or "")
+    return _GRADIENTES_AVATAR[sum(map(ord, chave)) % len(_GRADIENTES_AVATAR)]
+
+
+@register.filter
+def km(distancia: float | None) -> str:
+    """``2.345`` → ``2,3 km``; abaixo de 1 km, em metros."""
+    if distancia is None:
+        return ""
+    if distancia < 1:
+        return f"{round(distancia * 1000, -1):.0f} m"
+    return f"{distancia:.1f} km".replace(".", ",")
+
+
+@register.simple_tag(takes_context=True)
+def url_com(context: dict, **parametros: str) -> str:
+    """Query string atual com ``parametros`` trocados (vazio remove), para os filtros de um toque."""
+    consulta = context["request"].GET.copy()
+    for chave, valor in parametros.items():
+        if valor in ("", None):
+            consulta.pop(chave, None)
+        else:
+            consulta[chave] = valor
+    consulta.pop("page", None)
+    texto = consulta.urlencode()
+    return f"?{texto}" if texto else "?"

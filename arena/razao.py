@@ -233,8 +233,10 @@ def extrato_da_arena(arena: Arena) -> QuerySet[LedgerEntry]:
 
 
 def extrato_do_jogador(jogador: AbstractBaseUser) -> QuerySet[LedgerEntry]:
-    return LedgerEntry.objects.filter(conta__tipo=TipoConta.JOGADOR, conta__jogador=jogador).order_by(
-        "-created_at"
+    return (
+        LedgerEntry.objects.filter(conta__tipo=TipoConta.JOGADOR, conta__jogador=jogador)
+        .select_related("partida__time_slot__court__arena")
+        .order_by("-created_at")
     )
 
 

@@ -1,118 +1,150 @@
 {% extends "arena/base.html" %}
 {% load arena_extras %}
 
-{% block title %}Partidas abertas{% endblock %}
+{% block title %}Partidas perto de você{% endblock %}
 
 {% block content %}
-<section class="border-b border-slate-200 bg-white">
-  <div class="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.3fr_1fr] lg:items-center">
-    <div>
-      <p class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-        <span class="size-1.5 rounded-full bg-emerald-600" aria-hidden="true"></span>
-        {{ total_partidas }} partida{{ total_partidas|pluralize }} com vaga agora
-      </p>
-      <h1 class="mt-5 text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-        Faltou um? <span class="text-emerald-600">Entra no jogo.</span>
-      </h1>
-      <p class="mt-4 max-w-xl text-lg text-slate-600">
-        Partidas abertas nas arenas da sua cidade. Escolha o horário e o nível e garanta sua vaga
-        em segundos, sem precisar ter time fechado.
-      </p>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href="#partidas" class="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">Ver partidas</a>
-        {% if not user.is_authenticated %}
-          <a href="{% url 'arena:cadastro' %}" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">Criar conta grátis</a>
-        {% endif %}
-      </div>
-    </div>
-    <dl class="grid grid-cols-3 divide-x divide-slate-200 rounded-xl border border-slate-200 bg-slate-50">
-      <div class="px-3 py-6 text-center">
-        <dt class="text-xs font-medium text-slate-500">Partidas abertas</dt>
-        <dd class="mt-1 text-3xl font-semibold text-slate-900">{{ total_partidas }}</dd>
-      </div>
-      <div class="px-3 py-6 text-center">
-        <dt class="text-xs font-medium text-slate-500">Vagas disponíveis</dt>
-        <dd class="mt-1 text-3xl font-semibold text-slate-900">{{ total_vagas }}</dd>
-      </div>
-      <div class="px-3 py-6 text-center">
-        <dt class="text-xs font-medium text-slate-500">Arenas parceiras</dt>
-        <dd class="mt-1 text-3xl font-semibold text-slate-900">{{ total_arenas }}</dd>
-      </div>
-    </dl>
+<section class="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12">
+  <p class="inline-flex items-center gap-2 rounded-full bg-lime-400/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-lime-300 ring-1 ring-inset ring-lime-400/30">
+    <span class="size-1.5 animate-pulse rounded-full bg-lime-400" aria-hidden="true"></span> Ao vivo
+  </p>
+  <h1 class="titulo mt-4 text-4xl leading-[0.95] text-white sm:text-6xl">
+    {% if perfil %}Bora jogar, {{ perfil.nome_exibicao }}?{% else %}Bora jogar hoje?{% endif %}
+  </h1>
+  <p class="mt-3 max-w-xl text-zinc-400">Escolha o jogo, pague pelo app e entre em campo. Goleiro não paga.</p>
+</section>
+
+<section id="partidas" class="sticky top-16 z-30 mt-6 border-y border-white/5 bg-zinc-950/80 backdrop-blur-xl">
+  <div class="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-3 text-sm font-semibold sm:px-6 [scrollbar-width:none]">
+    <a href="{% url_com dia='' %}" class="shrink-0 rounded-full px-4 py-2 transition {% if not filtro.dia.value %}bg-lime-400 text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">Todos os dias</a>
+    {% for valor, rotulo in filtro.fields.dia.choices %}{% if valor %}
+      <a href="{% url_com dia=valor %}" class="shrink-0 rounded-full px-4 py-2 transition {% if filtro.dia.value == valor %}bg-lime-400 text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
+    {% endif %}{% endfor %}
+    <span class="mx-1 w-px shrink-0 bg-white/10" aria-hidden="true"></span>
+    {% if perfil %}
+      <a href="{% if meu_nivel %}{% url_com meu_nivel='' %}{% else %}{% url_com meu_nivel='1' %}{% endif %}" class="shrink-0 rounded-full px-4 py-2 transition {% if meu_nivel %}bg-cyan-400 text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">Meu nível ({{ perfil.nivel }})</a>
+    {% endif %}
+    {% if perto %}
+      <a href="{% url_com lat='' lng='' %}" class="shrink-0 rounded-full bg-cyan-400 px-4 py-2 text-zinc-950 transition">Perto de mim ✕</a>
+    {% else %}
+      <button type="button" data-perto class="shrink-0 rounded-full bg-white/5 px-4 py-2 text-zinc-300 transition hover:bg-white/10">Perto de mim</button>
+    {% endif %}
+    <span class="mx-1 w-px shrink-0 bg-white/10" aria-hidden="true"></span>
+    {% for valor, rotulo in filtro.fields.piso.choices %}{% if valor %}
+      <a href="{% if filtro.piso.value == valor %}{% url_com piso='' %}{% else %}{% url_com piso=valor %}{% endif %}" class="shrink-0 rounded-full px-4 py-2 transition {% if filtro.piso.value == valor %}bg-white text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
+    {% endif %}{% endfor %}
+    {% if filtros_ativos %}
+      <a href="{% url 'arena:vitrine' %}" class="shrink-0 rounded-full px-4 py-2 text-zinc-500 transition hover:text-white">Limpar</a>
+    {% endif %}
   </div>
 </section>
 
-<section id="partidas" class="mx-auto max-w-6xl scroll-mt-20 px-4 py-10 sm:px-6">
-  <form method="get" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
-      {% for campo in filtro %}
-        <label class="block"><span class="sr-only">{{ campo.label }}</span>{{ campo|estilizar }}</label>
-      {% endfor %}
-      <div class="col-span-2 flex gap-2 lg:col-span-1">
-        <button type="submit" class="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">Filtrar</button>
-        {% if filtro.ativo %}
-          <a href="{% url 'arena:vitrine' %}#partidas" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">Limpar</a>
-        {% endif %}
+<section class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+  {% if perto %}
+    <p class="mb-4 text-sm text-zinc-400">Mais perto de você primeiro.</p>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% for partida in partidas %}{% include "arena/_card_partida.html" %}{% endfor %}
+    </div>
+  {% else %}
+    {% regroup partidas by time_slot.data as dias %}
+    {% for dia in dias %}
+      <div class="mt-8 first:mt-0">
+        <div class="mb-4 flex items-end justify-between gap-4">
+          <h2 class="titulo text-2xl text-white">{{ dia.grouper|rotulo_dia }} <span class="font-sans text-base font-semibold text-zinc-500">{{ dia.grouper|date:"d/m" }}</span></h2>
+          <span class="text-sm text-zinc-500">{{ dia.list|length }} jogo{{ dia.list|length|pluralize }}</span>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {% for partida in dia.list %}{% include "arena/_card_partida.html" %}{% endfor %}
+        </div>
       </div>
+    {% endfor %}
+  {% endif %}
+  {% if not partidas %}
+    <div class="vidro mt-4 rounded-3xl px-6 py-16 text-center">
+      <p class="titulo text-2xl text-white">Nenhuma partida encontrada</p>
+      <p class="mx-auto mt-2 max-w-sm text-sm text-zinc-400">Tente outro dia, piso ou nível. As arenas abrem novas partidas o tempo todo.</p>
+      <a href="{% url 'arena:vitrine' %}" class="mt-6 inline-flex rounded-full bg-lime-400 px-5 py-2.5 text-sm font-black text-zinc-950 neon">Limpar filtros</a>
+    </div>
+  {% endif %}
+</section>
+
+{% if user.is_authenticated %}
+<dialog id="checkout-rapido" class="m-0 mt-auto w-full max-w-none rounded-t-3xl border border-white/10 bg-zinc-900 p-0 text-zinc-100 backdrop:bg-black/70 backdrop:backdrop-blur-sm sm:m-auto sm:max-w-md sm:rounded-3xl">
+  <form method="post" class="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+    {% csrf_token %}
+    <div class="mx-auto mb-5 h-1 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden="true"></div>
+    <p class="text-xs font-bold uppercase tracking-widest text-lime-300">Garantir vaga</p>
+    <h2 class="titulo mt-1 text-2xl text-white" data-titulo></h2>
+
+    <fieldset class="mt-5">
+      <legend class="text-sm font-semibold text-zinc-300">Vaga</legend>
+      <div class="mt-2 grid grid-cols-2 gap-2">
+        <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10"><input type="radio" name="posicao" value="linha" checked class="accent-lime-400"> Linha</label>
+        <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold has-[:checked]:border-cyan-400 has-[:checked]:bg-cyan-400/10" data-opcao-goleiro><input type="radio" name="posicao" value="goleiro" class="accent-cyan-400"> Goleiro · grátis</label>
+      </div>
+    </fieldset>
+
+    <fieldset class="mt-5" data-metodos>
+      <legend class="text-sm font-semibold text-zinc-300">Pagamento</legend>
+      <div class="mt-2 space-y-2">
+        <label class="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3.5 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10"><span class="flex items-center gap-2"><input type="radio" name="metodo" value="pix" checked class="accent-lime-400"> Pix</span><span data-pix></span></label>
+        <label class="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3.5 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10"><span class="flex items-center gap-2"><input type="radio" name="metodo" value="cartao" class="accent-lime-400"> Cartão</span><span data-cartao></span></label>
+        <label class="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3.5 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10" data-opcao-credito data-saldo="{{ saldo|stringformat:'s' }}"><span class="flex items-center gap-2"><input type="radio" name="metodo" value="credito" class="accent-lime-400"> Crédito ArenaMatch</span><span class="text-zinc-400">saldo {{ saldo|brl }}</span></label>
+      </div>
+      <p class="mt-2 text-xs text-zinc-500">Vaga segura por 10 min enquanto você paga. Cancelou até 24h antes? Vira crédito.</p>
+    </fieldset>
+
+    <div class="mt-6 flex gap-3">
+      <button type="button" data-fechar class="rounded-full bg-white/5 px-5 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10">Voltar</button>
+      <button type="submit" class="flex-1 rounded-full bg-lime-400 px-5 py-3 text-sm font-black text-zinc-950 neon hover:bg-lime-300">Confirmar</button>
     </div>
   </form>
+</dialog>
+{% endif %}
+{% endblock %}
 
-  {% regroup partidas by time_slot.data as dias %}
-  {% for dia in dias %}
-    <div class="mt-10">
-      <div class="mb-4 flex items-end justify-between gap-4 border-b border-slate-200 pb-3">
-        <div>
-          <h2 class="text-xl font-semibold tracking-tight text-slate-900">{{ dia.grouper|rotulo_dia }}</h2>
-          <p class="text-sm text-slate-500">{{ dia.grouper|date:"d \d\e F"|lower }}</p>
-        </div>
-        <span class="text-sm text-slate-500">{{ dia.list|length }} partida{{ dia.list|length|pluralize }}</span>
-      </div>
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {% for partida in dia.list %}
-          {% include "arena/_card_partida.html" %}
-        {% endfor %}
-      </div>
-    </div>
-  {% empty %}
-    <div class="mt-10 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-      <h2 class="text-base font-semibold text-slate-900">Nenhuma partida encontrada</h2>
-      <p class="mx-auto mt-1 max-w-sm text-sm text-slate-500">Tente outro dia, nível ou arena. As arenas abrem novas partidas o tempo todo.</p>
-      {% if filtro.ativo %}
-        <a href="{% url 'arena:vitrine' %}#partidas" class="mt-5 inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">Limpar filtros</a>
-      {% endif %}
-    </div>
-  {% endfor %}
-</section>
+{% block scripts %}
+<script>
+  (() => {
+    document.querySelector("[data-perto]")?.addEventListener("click", (evento) => {
+      const botao = evento.currentTarget;
+      if (!navigator.geolocation) { botao.textContent = "Localização indisponível"; return; }
+      botao.textContent = "Localizando...";
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => {
+          const url = new URL(window.location.href);
+          url.searchParams.set("lat", coords.latitude.toFixed(5));
+          url.searchParams.set("lng", coords.longitude.toFixed(5));
+          window.location.href = url.toString();
+        },
+        () => { botao.textContent = "Permita a localização"; },
+        { enableHighAccuracy: false, timeout: 8000 }
+      );
+    });
 
-<section class="mx-auto max-w-6xl px-4 sm:px-6">
-  <h2 class="text-xl font-semibold tracking-tight text-slate-900">Como funciona</h2>
-  <div class="mt-5 grid gap-4 md:grid-cols-3">
-    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <span class="grid size-9 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "filtro" "size-5" %}</span>
-      <h3 class="mt-4 font-semibold text-slate-900">1. Escolha a partida</h3>
-      <p class="mt-1 text-sm text-slate-500">Filtre por dia, nível, tipo de piso e arena para achar o jogo certo.</p>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <span class="grid size-9 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "ticket" "size-5" %}</span>
-      <h3 class="mt-4 font-semibold text-slate-900">2. Reserve sua vaga</h3>
-      <p class="mt-1 text-sm text-slate-500">Pague com Pix, cartão ou crédito e a vaga é sua na hora. Goleiro joga de graça.</p>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <span class="grid size-9 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "bola" "size-5" %}</span>
-      <h3 class="mt-4 font-semibold text-slate-900">3. Chegue e jogue</h3>
-      <p class="mt-1 text-sm text-slate-500">Mostre o comprovante na recepção e entre em campo. Cancelou até 24h antes? O valor volta como crédito.</p>
-    </div>
-  </div>
-
-  <div class="mt-8 flex flex-col gap-6 rounded-xl bg-slate-900 px-6 py-8 text-white sm:px-8 md:flex-row md:items-center md:justify-between">
-    <div class="max-w-xl">
-      <p class="text-sm font-medium text-emerald-300">Para donos de arena</p>
-      <h2 class="mt-1 text-2xl font-semibold tracking-tight">Transforme horários vagos em receita.</h2>
-      <p class="mt-2 text-slate-300">Agenda, mensalistas e financeiro em um só lugar, e partidas abertas para a comunidade com um clique.</p>
-    </div>
-    <a href="{% url 'gestor:login' %}" class="inline-flex shrink-0 items-center gap-2 self-start rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-100 md:self-auto">
-      Conhecer o ArenaManager {% icone "seta" "size-4" %}
-    </a>
-  </div>
-</section>
+    const dialogo = document.getElementById("checkout-rapido");
+    if (!dialogo) return;
+    const form = dialogo.querySelector("form");
+    const metodos = dialogo.querySelector("[data-metodos]");
+    const opcaoGoleiro = dialogo.querySelector("[data-opcao-goleiro]");
+    const opcaoCredito = dialogo.querySelector("[data-opcao-credito]");
+    const atualizar = () => { metodos.hidden = form.posicao.value === "goleiro"; };
+    document.querySelectorAll("[data-checkout]").forEach((botao) => {
+      botao.addEventListener("click", () => {
+        form.action = botao.dataset.checkout;
+        dialogo.querySelector("[data-titulo]").textContent = botao.dataset.titulo;
+        dialogo.querySelector("[data-pix]").textContent = botao.dataset.pix;
+        dialogo.querySelector("[data-cartao]").textContent = botao.dataset.cartao;
+        opcaoGoleiro.hidden = !botao.dataset.goleiro;
+        opcaoCredito.hidden = parseFloat(opcaoCredito.dataset.saldo) < parseFloat(botao.dataset.preco);
+        form.posicao.value = "linha";
+        form.metodo.value = "pix";
+        atualizar();
+        dialogo.showModal();
+      });
+    });
+    form.addEventListener("change", atualizar);
+    dialogo.querySelector("[data-fechar]").addEventListener("click", () => dialogo.close());
+  })();
+</script>
 {% endblock %}

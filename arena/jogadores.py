@@ -97,9 +97,21 @@ def salvar_perfil(
 # --- Elegibilidade ---------------------------------------------------------------
 
 
-def motivo_inelegivel(partida: OpenMatch, jogador: AbstractBaseUser, posicao: str = Posicao.LINHA) -> str | None:
-    """Explica por que o jogador não pode entrar na vaga (``None`` se pode)."""
-    perfil = perfil_do(jogador)
+_PERFIL_NAO_INFORMADO = object()
+
+
+def motivo_inelegivel(
+    partida: OpenMatch,
+    jogador: AbstractBaseUser,
+    posicao: str = Posicao.LINHA,
+    perfil: PlayerProfile | None | object = _PERFIL_NAO_INFORMADO,
+) -> str | None:
+    """Explica por que o jogador não pode entrar na vaga (``None`` se pode).
+
+    ``perfil`` evita reconsultar o banco quando a mesma checagem roda em várias partidas.
+    """
+    if perfil is _PERFIL_NAO_INFORMADO:
+        perfil = perfil_do(jogador)
     if perfil is None:
         return "Complete seu perfil de jogador (nível e posição) para entrar em partidas."
     if posicao == Posicao.GOLEIRO:

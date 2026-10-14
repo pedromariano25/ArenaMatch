@@ -166,14 +166,16 @@ class TelasDoJogadorTest(TestCase):
                 "password2": "Bola-na-rede-2026",
             },
         )
-        self.assertRedirects(resposta, f"{reverse('arena:configurar_perfil')}?next=/", fetch_redirect_response=False)
+        self.assertRedirects(
+            resposta, f"{reverse('arena:configurar_perfil')}?next={reverse('arena:vitrine')}", fetch_redirect_response=False
+        )
         resposta = self.client.post(
             reverse("arena:configurar_perfil"),
             {"posicao": "ataque", "autoavaliacao": "4", "frequencia": "semanal", "experiencia": "amador", "next": "/"},
         )
         self.assertRedirects(resposta, "/")
         self.assertEqual(PlayerProfile.objects.get(jogador__username="bia").nivel, 4)
-        self.assertContains(self.client.get(reverse("arena:perfil")), "Partidas jogadas")
+        self.assertContains(self.client.get(reverse("arena:perfil")), "partidas jogadas")
 
     def test_checkout_sem_perfil_manda_para_o_questionario(self):
         partida = criar_partida()

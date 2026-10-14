@@ -211,7 +211,10 @@ class FinanceiroTest(PortalBase):
         comprar(alheia)
         resposta = self.client.get(reverse("gestor:financeiro"))
         lancamentos = list(resposta.context["pagina"].object_list)
-        self.assertEqual([(l.tipo, l.valor) for l in lancamentos], [(TipoLancamento.VENDA_VAGA, Decimal("25.00"))])
+        self.assertEqual(
+            [(lancamento.tipo, lancamento.valor) for lancamento in lancamentos],
+            [(TipoLancamento.VENDA_VAGA, Decimal("25.00"))],
+        )
         self.assertEqual(resposta.context["resumo"]["a_liberar"], Decimal("25.00"))
         self.assertNotContains(resposta, "Marcar como pago")
         filtrada = self.client.get(reverse("gestor:financeiro"), {"tipo": "repasse"})

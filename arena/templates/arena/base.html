@@ -1,71 +1,83 @@
 {% load arena_extras %}<!doctype html>
-<html lang="pt-BR" class="scroll-smooth bg-slate-50">
+<html lang="pt-BR" class="scroll-smooth bg-zinc-950">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Partidas abertas{% endblock %} · ArenaMatch</title>
-  <meta name="description" content="Encontre partidas de futebol abertas perto de você e reserve sua vaga em segundos.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23059669'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
-  <style type="text/tailwindcss">
-    @theme {
-      --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-    }
-  </style>
+  {% include "arena/_head.html" %}
+  <title>{% block title %}Partidas{% endblock %} · ArenaMatch</title>
 </head>
-<body class="flex min-h-screen flex-col font-sans text-slate-800 antialiased">
-  <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+<body class="min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased selection:bg-lime-400 selection:text-zinc-950">
+  <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+    <div class="absolute -top-48 left-1/2 h-[28rem] w-[56rem] -translate-x-1/2 rounded-full bg-lime-400/10 blur-3xl"></div>
+    <div class="absolute top-1/3 -right-48 h-96 w-96 rounded-full bg-cyan-400/10 blur-3xl"></div>
+  </div>
+
+  <header class="sticky top-0 z-40 border-b border-white/5 bg-zinc-950/70 backdrop-blur-xl">
     <nav class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
       <a href="{% url 'arena:vitrine' %}" class="flex items-center gap-2.5">
-        <span class="grid size-8 place-items-center rounded-lg bg-emerald-600 text-white">{% icone "bola" "size-5" %}</span>
-        <span class="text-base font-semibold tracking-tight text-slate-900">ArenaMatch</span>
+        <span class="grid size-9 place-items-center rounded-xl bg-lime-400 text-zinc-950 neon">{% icone "bola" "size-5" %}</span>
+        <span class="titulo text-lg tracking-tight text-white">ARENA<span class="text-lime-400">MATCH</span></span>
       </a>
-      <div class="flex items-center gap-1 text-sm font-medium sm:gap-2">
-        <a href="{% url 'arena:vitrine' %}" class="hidden rounded-lg px-3 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 sm:block">Partidas</a>
+      <div class="hidden items-center gap-1 text-sm font-semibold md:flex">
+        <a href="{% url 'arena:vitrine' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Partidas</a>
         {% if user.is_authenticated %}
-          <a href="{% url 'arena:minhas_inscricoes' %}" class="whitespace-nowrap rounded-lg px-3 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"><span class="sm:hidden">Inscrições</span><span class="hidden sm:inline">Minhas inscrições</span></a>
-          {% if user.is_player %}<a href="{% url 'arena:perfil' %}" class="whitespace-nowrap rounded-lg px-3 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">Perfil</a>{% endif %}
-          <span class="hidden items-center gap-2 pl-2 md:flex">
-            <span class="grid size-8 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">{{ user.iniciais }}</span>
-            <span class="text-slate-700">{{ user.nome_publico }}</span>
-          </span>
+          <a href="{% url 'arena:minhas_inscricoes' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Minhas partidas</a>
+          {% if user.is_player %}<a href="{% url 'arena:perfil' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Perfil</a>{% endif %}
+        {% endif %}
+      </div>
+      <div class="flex items-center gap-2 text-sm font-semibold">
+        {% if user.is_authenticated %}
+          <a href="{% if user.is_player %}{% url 'arena:perfil' %}{% else %}{% url 'arena:minhas_inscricoes' %}{% endif %}" class="flex items-center gap-2 rounded-full py-1 pl-1 pr-3 transition hover:bg-white/5">
+            {% include "arena/_avatar.html" with usuario=user tamanho="size-8" texto="text-xs" %}
+            <span class="hidden text-zinc-200 sm:inline">{{ user.nome_publico }}</span>
+          </a>
           <form method="post" action="{% url 'arena:sair' %}">
             {% csrf_token %}
-            <button type="submit" class="rounded-lg px-3 py-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">Sair</button>
+            <button type="submit" class="rounded-full px-3 py-2 text-zinc-400 transition hover:bg-white/5 hover:text-white" title="Sair">{% icone "sair" "size-5" %}<span class="sr-only">Sair</span></button>
           </form>
         {% else %}
-          <a href="{% url 'arena:entrar' %}?next={{ request.get_full_path|urlencode }}" class="rounded-lg px-3 py-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">Entrar</a>
-          <a href="{% url 'arena:cadastro' %}" class="rounded-lg bg-emerald-600 px-3.5 py-2 text-white shadow-sm transition hover:bg-emerald-700">Criar conta</a>
+          <a href="{% url 'arena:entrar_telefone' %}?next={{ request.get_full_path|urlencode }}" class="hidden rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white sm:inline-flex">Entrar</a>
+          <a href="{% url 'arena:entrar_telefone' %}?next={{ request.get_full_path|urlencode }}" class="whitespace-nowrap rounded-full bg-lime-400 px-4 py-2 text-zinc-950 transition hover:bg-lime-300 neon"><span class="sm:hidden">Entrar</span><span class="hidden sm:inline">Criar conta</span></a>
         {% endif %}
       </div>
     </nav>
   </header>
 
   {% if messages %}
-    <div class="mx-auto mt-4 w-full max-w-6xl space-y-2 px-4 sm:px-6">
+    <div class="mx-auto mt-4 w-full max-w-6xl space-y-2 px-4 sm:px-6" aria-live="polite">
       {% for message in messages %}
-        <div role="status" class="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-          {% if "success" in message.tags %}{% icone "check" "size-5 shrink-0 text-emerald-600" %}{% elif "error" in message.tags %}{% icone "x" "size-5 shrink-0 text-red-600" %}{% elif "warning" in message.tags %}{% icone "alerta" "size-5 shrink-0 text-amber-600" %}{% else %}{% icone "info" "size-5 shrink-0 text-slate-500" %}{% endif %}
+        <div role="status" class="vidro flex items-start gap-3 rounded-2xl p-4 text-sm text-zinc-200">
+          {% if "success" in message.tags %}{% icone "check" "size-5 shrink-0 text-lime-400" %}{% elif "error" in message.tags %}{% icone "x" "size-5 shrink-0 text-rose-400" %}{% elif "warning" in message.tags %}{% icone "alerta" "size-5 shrink-0 text-amber-300" %}{% else %}{% icone "info" "size-5 shrink-0 text-cyan-300" %}{% endif %}
           <p>{{ message }}</p>
         </div>
       {% endfor %}
     </div>
   {% endif %}
 
-  <main class="flex-1">{% block content %}{% endblock %}</main>
+  <main class="pb-28 md:pb-10">{% block content %}{% endblock %}</main>
 
-  <footer class="mt-16 border-t border-slate-200 bg-white">
-    <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+  <footer class="hidden border-t border-white/5 md:block">
+    <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-8 text-sm text-zinc-500">
       <p>© {% now "Y" %} ArenaMatch · Futebol amador, sem complicação.</p>
-      <nav class="flex gap-5 font-medium">
-        <a href="{% url 'api:raiz' %}" class="transition hover:text-slate-900">API</a>
-        <a href="{% url 'gestor:login' %}" class="transition hover:text-slate-900">Para arenas</a>
+      <nav class="flex gap-6 font-medium">
+        <a href="{% url 'inicio' %}" class="transition hover:text-white">Sobre</a>
+        <a href="{% url 'gestor:login' %}" class="transition hover:text-white">Para arenas</a>
+        <a href="{% url 'api:raiz' %}" class="transition hover:text-white">API</a>
       </nav>
     </div>
   </footer>
+
+  <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-zinc-950/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden" aria-label="Navegação do app">
+    <div class="mx-auto grid max-w-md grid-cols-3 text-[11px] font-semibold">
+      {% url 'arena:vitrine' as url_feed %}{% url 'arena:minhas_inscricoes' as url_minhas %}{% url 'arena:perfil' as url_perfil %}
+      <a href="{{ url_feed }}" class="flex flex-col items-center gap-1 py-2.5 {% if request.path == url_feed %}text-lime-400{% else %}text-zinc-400{% endif %}">{% icone "bola" "size-6" %} Jogos</a>
+      {% if user.is_authenticated %}
+        <a href="{{ url_minhas }}" class="flex flex-col items-center gap-1 py-2.5 {% if request.path == url_minhas %}text-lime-400{% else %}text-zinc-400{% endif %}">{% icone "ticket" "size-6" %} Minhas</a>
+        <a href="{{ url_perfil }}" class="flex flex-col items-center gap-1 py-2.5 {% if url_perfil in request.path %}text-lime-400{% else %}text-zinc-400{% endif %}">{% icone "jogadores" "size-6" %} Perfil</a>
+      {% else %}
+        <a href="{% url 'inicio' %}" class="flex flex-col items-center gap-1 py-2.5 text-zinc-400">{% icone "info" "size-6" %} Sobre</a>
+        <a href="{% url 'arena:entrar_telefone' %}" class="flex flex-col items-center gap-1 py-2.5 text-zinc-400">{% icone "seta" "size-6" %} Entrar</a>
+      {% endif %}
+    </div>
+  </nav>
   {% block scripts %}{% endblock %}
 </body>
 </html>

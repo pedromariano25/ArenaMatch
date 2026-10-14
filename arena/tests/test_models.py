@@ -182,7 +182,7 @@ class OpenMatchTest(TestCase):
         partida.refresh_from_db()
         self.assertEqual((partida.vagas_ocupadas, partida.percentual_ocupado), (1, 25))
         self.assertTrue(partida.aceita_inscricoes)
-        self.assertEqual(partida.get_absolute_url(), f"/partidas/{partida.pk}/")
+        self.assertEqual(partida.get_absolute_url(), f"/app/partidas/{partida.pk}/")
 
     def test_queryset_vitrine_e_filtros(self):
         quadra = criar_quadra()

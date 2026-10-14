@@ -427,6 +427,23 @@ class Arena(ValidatedModel):
         default=HORAS_PRAZO_QUORUM_PADRAO,
         validators=[MinValueValidator(1), MaxValueValidator(48)],
     )
+    latitude = models.DecimalField(
+        "latitude",
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("-90")), MaxValueValidator(Decimal("90"))],
+        help_text="Usada no filtro \"perto de mim\". Ex.: -23.553600.",
+    )
+    longitude = models.DecimalField(
+        "longitude",
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("-180")), MaxValueValidator(Decimal("180"))],
+    )
 
     class Meta:
         verbose_name = "arena"
@@ -1531,6 +1548,27 @@ class SinalNivel(BaseModel):
             models.UniqueConstraint(fields=["autor", "alvo", "partida"], name="sinal_unico_por_partida"),
             models.CheckConstraint(condition=~Q(autor=F("alvo")), name="sinal_nao_e_para_si"),
         ]
+
+
+class CodigoAcesso(BaseModel):
+    """Código de uso único, enviado por SMS, para entrar com o número de telefone.
+
+    O código é guardado só como hash, vale poucos minutos e aceita poucas tentativas.
+    """
+
+    telefone = models.CharField("telefone (só dígitos)", max_length=13, db_index=True)
+    codigo_hash = models.CharField("hash do código", max_length=128)
+    expira_em = models.DateTimeField("expira em")
+    tentativas = models.PositiveSmallIntegerField("tentativas", default=0)
+    usado_em = models.DateTimeField("usado em", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "código de acesso"
+        verbose_name_plural = "códigos de acesso"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Código para ...{self.telefone[-4:]}"
 
 
 # --- Pagamentos e razão contábil ---------------------------------------------

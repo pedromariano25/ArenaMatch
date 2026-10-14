@@ -71,6 +71,7 @@ from arena.validators import digitos_verificadores_cnpj, digitos_verificadores_c
 SENHA_ADMIN = "admin123"
 SENHA_GESTOR = "gestor123"
 SENHA_JOGADOR = "jogador123"
+TELEFONE_DEMO = "(11) 90000-0001"
 NOME_GRUPO_GESTORES = "Gestores"
 
 DIAS_DE_AGENDA = 7
@@ -85,6 +86,7 @@ ARENAS: list[dict[str, Any]] = [
     {
         "nome": "Arena Gol de Placa",
         "endereco_completo": "Rua Harmonia, 850 – Vila Madalena, São Paulo – SP",
+        "coordenadas": (Decimal("-23.553600"), Decimal("-46.691400")),
         "telefone_contato": "(11) 3000-0101",
         "hora_abertura": time(7),
         "hora_fechamento": MEIA_NOITE,
@@ -99,6 +101,7 @@ ARENAS: list[dict[str, Any]] = [
     {
         "nome": "Complexo Esportivo Tabelinha",
         "endereco_completo": "Avenida do Contorno, 6120 – Savassi, Belo Horizonte – MG",
+        "coordenadas": (Decimal("-19.938600"), Decimal("-43.933600")),
         "telefone_contato": "(31) 3000-0202",
         "hora_abertura": time(8),
         "hora_fechamento": time(23),
@@ -112,6 +115,7 @@ ARENAS: list[dict[str, Any]] = [
     {
         "nome": "Arena Pé na Areia",
         "endereco_completo": "Rua Barata Ribeiro, 520 – Copacabana, Rio de Janeiro – RJ",
+        "coordenadas": (Decimal("-22.968900"), Decimal("-43.185600")),
         "telefone_contato": "(21) 3000-0303",
         "hora_abertura": time(6),
         "hora_fechamento": time(23),
@@ -345,6 +349,9 @@ class Command(BaseCommand):
             for nome, sobrenome in JOGADORES
         ]
         demo = self._criar_usuario("jogador", "Jogador", "Demo", SENHA_JOGADOR, is_player=True)
+        # Celular fixo para testar o login por código (o código aparece na tela em DEBUG).
+        demo.telefone = TELEFONE_DEMO
+        demo.save(update_fields=["telefone"])
         niveis = list(NIVEIS_DOS_JOGADORES)
         self.rng.shuffle(niveis)
         ordem = list(range(len(jogadores)))
@@ -415,6 +422,8 @@ class Command(BaseCommand):
                 telefone_contato=dados["telefone_contato"],
                 hora_abertura=dados["hora_abertura"],
                 hora_fechamento=dados["hora_fechamento"],
+                latitude=dados["coordenadas"][0],
+                longitude=dados["coordenadas"][1],
             )
             for nome_quadra, piso, capacidade in dados["quadras"]:
                 Court.objects.create(
@@ -680,11 +689,12 @@ class Command(BaseCommand):
             ("Superusuário", "admin", SENHA_ADMIN),
             *[(f"Gestor - {a['nome']}", a["gestor"][0], SENHA_GESTOR) for a in ARENAS],
             ("Jogador de demonstração", "jogador", SENHA_JOGADOR),
+            ("Jogador demo pelo celular (código na tela)", TELEFONE_DEMO, "—"),
             ("Outros jogadores", "lucas.oliveira (etc.)", SENHA_JOGADOR),
         ]
         for papel, login, senha in acessos:
             self.stdout.write(f"  {papel:<42}{login:<24}{senha}")
         self.stdout.write(
-            "\n  Vitrine: http://127.0.0.1:8000/  |  Portal: http://127.0.0.1:8000/manager/"
-            "  |  Admin: http://127.0.0.1:8000/admin/\n"
+            "\n  Site: http://127.0.0.1:8000/  |  App: http://127.0.0.1:8000/app/"
+            "  |  Portal: http://127.0.0.1:8000/manager/  |  Admin: http://127.0.0.1:8000/admin/\n"
         )

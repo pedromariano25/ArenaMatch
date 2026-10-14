@@ -29,6 +29,14 @@
         {% include "arena/_manager_campo.html" with campo=form_arena.hora_fechamento %}
       </div>
       <div class="border-t border-slate-100 pt-5">
+        <p class="text-sm font-medium text-slate-900">Localização</p>
+        <p class="mt-0.5 text-sm text-slate-500">Coordenadas da arena para o filtro "perto de mim" do app. No Google Maps, clique com o botão direito no local para copiá-las.</p>
+        <div class="mt-4 grid gap-5 sm:grid-cols-2">
+          {% include "arena/_manager_campo.html" with campo=form_arena.latitude %}
+          {% include "arena/_manager_campo.html" with campo=form_arena.longitude %}
+        </div>
+      </div>
+      <div class="border-t border-slate-100 pt-5">
         <p class="text-sm font-medium text-slate-900">Mínimo de jogadores</p>
         <p class="mt-0.5 text-sm text-slate-500">Partidas que não atingem o mínimo de vagas pagas até o prazo são canceladas, e todos os jogadores são reembolsados.</p>
         <div class="mt-4 grid gap-5 sm:grid-cols-2">

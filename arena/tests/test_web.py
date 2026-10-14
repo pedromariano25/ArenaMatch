@@ -24,7 +24,6 @@ class VitrineTest(TestCase):
         resposta = self.client.get(reverse("arena:vitrine"))
         self.assertContains(resposta, self.arena.nome)
         self.assertEqual(list(resposta.context["partidas"]), [self.partida])
-        self.assertEqual(resposta.context["total_vagas"], 2)
         filtrada = self.client.get(reverse("arena:vitrine"), {"nivel": "avancado"})
         self.assertEqual(list(filtrada.context["partidas"]), [])
         self.assertContains(filtrada, "Nenhuma partida encontrada")
@@ -47,7 +46,7 @@ class CheckoutTest(TestCase):
 
     def test_exige_login(self):
         resposta = self.client.get(self.url)
-        self.assertRedirects(resposta, f"{reverse('arena:entrar')}?next={self.url}")
+        self.assertRedirects(resposta, f"{reverse('arena:entrar_telefone')}?next={self.url}")
 
     def test_pix_leva_ao_pagamento_e_a_simulacao_confirma(self):
         self.client.force_login(self.jogador)

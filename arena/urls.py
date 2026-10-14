@@ -29,7 +29,9 @@ urlpatterns = [
     path("partidas/<uuid:pk>/avaliar/", views.AvaliarPartidaView.as_view(), name="avaliar_partida"),
     path("perfil/", views.PerfilView.as_view(), name="perfil"),
     path("perfil/configurar/", views.ConfigurarPerfilView.as_view(), name="configurar_perfil"),
-    path("entrar/", views.EntrarView.as_view(), name="entrar"),
+    path("entrar/", views.EntrarTelefoneView.as_view(), name="entrar_telefone"),
+    path("entrar/codigo/", views.VerificarCodigoView.as_view(), name="verificar_codigo"),
+    path("entrar/senha/", views.EntrarView.as_view(), name="entrar"),
     path("sair/", LogoutView.as_view(), name="sair"),
     path("cadastro/", views.CadastroView.as_view(), name="cadastro"),
 ]

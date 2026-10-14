@@ -1,0 +1,32 @@
+{% load arena_extras %}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#09090b">
+<meta name="description" content="ArenaMatch: encontre partidas de futebol perto de você, pague pelo app e entre em campo. Para arenas: horários vagos viram receita.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2309090b'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23a3e635' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23a3e635'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,600..900&family=Inter:wght@400;500;600;700;800&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
+<style type="text/tailwindcss">
+  @theme {
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Archivo", "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+  /* Vidro: superfícies translúcidas sobre o fundo escuro. */
+  @utility vidro {
+    background-color: rgb(255 255 255 / 0.04);
+    border: 1px solid rgb(255 255 255 / 0.08);
+    backdrop-filter: blur(18px);
+  }
+  /* Brilho neon dos botões de ação principal. */
+  @utility neon {
+    box-shadow: 0 0 0 1px rgb(163 230 53 / 0.5), 0 10px 40px -8px rgb(163 230 53 / 0.55);
+  }
+  @utility titulo {
+    font-family: var(--font-display);
+    font-stretch: 112%;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+  }
+</style>

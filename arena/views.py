@@ -3,13 +3,14 @@
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db.models import QuerySet, Sum
+from django.db.models import Prefetch, QuerySet, Sum
 from django.forms import Form
 from django.http import (
     HttpRequest,
@@ -30,14 +31,16 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, FormView, ListView, TemplateView
 
-from . import checkout, gestao, jogadores, partidas, razao
+from . import acesso, checkout, gestao, jogadores, partidas, razao
 from .forms import (
     AbrirPartidaForm,
     ArenaConfigForm,
     AvaliacaoPartidaForm,
     CadastroJogadorForm,
     CheckoutForm,
+    CodigoAcessoForm,
     FiltroVitrineForm,
+    TelefoneForm,
     PerfilJogadorForm,
     QuadraForm,
 )
@@ -60,6 +63,7 @@ from .models import (
     TipoLancamento,
     WaitlistEntry,
 )
+from .localizacao import distancia_km, ler_coordenadas
 from .pagamentos import obter_gateway
 
 
@@ -76,24 +80,89 @@ def _mensagens(erro: ValidationError) -> str:
     return " ".join(erro.messages)
 
 
-class VitrineView(ListView):
-    """Feed de partidas abertas, agrupado por dia e filtrável via query string."""
+def _confirmados_com_perfil() -> Prefetch:
+    """Jogadores confirmados de cada partida (para os rostos nos cards)."""
+    return Prefetch(
+        "inscricoes",
+        queryset=Booking.objects.confirmadas().select_related("player__perfil").order_by("confirmada_em"),
+        to_attr="confirmadas",
+    )
 
-    template_name = "arena/index.html"
-    context_object_name = "partidas"
 
-    def get_queryset(self) -> QuerySet:
-        self.filtro = FiltroVitrineForm(self.request.GET or None)
-        return OpenMatch.objects.vitrine().filtrar(**self.filtro.filtros())
+class LandingView(TemplateView):
+    """Página institucional (raiz do site): o que é o ArenaMatch, para jogadores e arenas."""
+
+    template_name = "site/inicio.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         contexto = super().get_context_data(**kwargs)
         abertas = OpenMatch.objects.vitrine().filter(status=StatusPartida.ABERTA)
         contexto.update(
-            filtro=self.filtro,
             total_partidas=abertas.count(),
             total_vagas=abertas.aggregate(total=Sum("vagas_disponiveis"))["total"] or 0,
             total_arenas=Arena.objects.count(),
+            total_jogadores=Booking.objects.filter(status=StatusInscricao.CONFIRMADA)
+            .values("player")
+            .distinct()
+            .count(),
+            destaques=list(abertas.prefetch_related(_confirmados_com_perfil())[:3]),
+        )
+        return contexto
+
+
+def redirecionar_para_o_app(request: HttpRequest, caminho: str) -> HttpResponse:
+    """Links antigos da vitrine (antes em ``/``) agora vivem em ``/app/``."""
+    destino = f"/app/{caminho}"
+    if request.META.get("QUERY_STRING"):
+        destino += f"?{request.META['QUERY_STRING']}"
+    return redirect(destino, permanent=True)
+
+
+class VitrineView(ListView):
+    """Feed de partidas abertas: filtros de um toque, rostos de quem vai e "perto de mim"."""
+
+    template_name = "arena/index.html"
+    context_object_name = "partidas"
+
+    def get_queryset(self) -> list[OpenMatch]:
+        self.filtro = FiltroVitrineForm(self.request.GET or None)
+        usuario = self.request.user
+        self.perfil = jogadores.perfil_do(usuario)
+        partidas = OpenMatch.objects.vitrine().filtrar(**self.filtro.filtros())
+        if self.request.GET.get("meu_nivel") and self.perfil:
+            partidas = partidas.para_o_nivel(self.perfil.nivel)
+        partidas = list(partidas.prefetch_related(_confirmados_com_perfil()))
+        self.coordenadas = ler_coordenadas(self.request.GET.get("lat"), self.request.GET.get("lng"))
+        for partida in partidas:
+            arena = partida.time_slot.court.arena
+            partida.distancia = (
+                distancia_km(*self.coordenadas, float(arena.latitude), float(arena.longitude))
+                if self.coordenadas and arena.latitude is not None
+                else None
+            )
+            partida.bloqueio = (
+                jogadores.motivo_inelegivel(partida, usuario, Posicao.LINHA, perfil=self.perfil)
+                if usuario.is_authenticated and usuario.is_player and self.perfil
+                else None
+            )
+            partida.goleiros_livres = partida.vagas_goleiro - sum(
+                1 for inscricao in partida.confirmadas if inscricao.posicao == Posicao.GOLEIRO
+            )
+        if self.coordenadas:
+            partidas.sort(key=lambda p: (p.distancia is None, p.distancia or 0))
+        return partidas
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        usuario = self.request.user
+        contexto.update(
+            filtro=self.filtro,
+            perfil=self.perfil,
+            perto=self.coordenadas is not None,
+            meu_nivel=bool(self.request.GET.get("meu_nivel")),
+            saldo=razao.saldo_do_jogador(usuario) if usuario.is_authenticated else None,
+            pode_ser_goleiro=bool(self.perfil and self.perfil.pode_ser_goleiro),
+            filtros_ativos=bool(self.request.GET),
         )
         return contexto
 
@@ -406,10 +475,81 @@ class PagamentoWebhookView(View):
 
 
 class EntrarView(LoginView):
-    """Login da vitrine (jogadores); gestores usam o portal em /manager/."""
+    """Login com usuário e senha (o padrão do app é entrar com o celular)."""
 
     template_name = "arena/entrar.html"
     redirect_authenticated_user = True
+
+
+CHAVE_TELEFONE_SESSAO = "acesso_telefone"
+
+
+class EntrarTelefoneView(FormView):
+    """Passo 1 do login por celular: envia o código por SMS."""
+
+    template_name = "arena/entrar_telefone.html"
+    form_class = TelefoneForm
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if request.user.is_authenticated:
+            return redirect("arena:vitrine")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto["next"] = self.request.GET.get("next") or self.request.POST.get("next", "")
+        return contexto
+
+    def form_valid(self, form: TelefoneForm) -> HttpResponse:
+        try:
+            codigo = acesso.solicitar_codigo(form.cleaned_data["telefone"])
+        except ValidationError as erro:
+            form.add_error("telefone", erro)
+            return self.form_invalid(form)
+        self.request.session[CHAVE_TELEFONE_SESSAO] = acesso.normalizar_telefone(form.cleaned_data["telefone"])
+        if settings.DEBUG and acesso.obter_sms().simulado:
+            messages.info(self.request, f"Modo de demonstração: o código enviado por SMS é {codigo}.")
+        destino = reverse("arena:verificar_codigo")
+        proximo = self.request.POST.get("next")
+        return redirect(f"{destino}?next={proximo}" if proximo else destino)
+
+
+class VerificarCodigoView(FormView):
+    """Passo 2 do login por celular: confere o código e entra (ou cria a conta)."""
+
+    template_name = "arena/verificar_codigo.html"
+    form_class = CodigoAcessoForm
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        self.telefone = request.session.get(CHAVE_TELEFONE_SESSAO)
+        if not self.telefone:
+            return redirect("arena:entrar_telefone")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto.update(
+            telefone=acesso.formatar_telefone(self.telefone),
+            next=self.request.GET.get("next") or self.request.POST.get("next", ""),
+        )
+        return contexto
+
+    def form_valid(self, form: CodigoAcessoForm) -> HttpResponse:
+        try:
+            usuario = acesso.validar_codigo(self.telefone, form.cleaned_data["codigo"], form.cleaned_data["nome"])
+        except ValidationError as erro:
+            form.add_error("codigo", erro)
+            return self.form_invalid(form)
+        login(self.request, usuario, backend="django.contrib.auth.backends.ModelBackend")
+        self.request.session.pop(CHAVE_TELEFONE_SESSAO, None)
+        destino = _destino_seguro(
+            self.request, self.request.POST.get("next") or self.request.GET.get("next"), reverse("arena:vitrine")
+        )
+        if usuario.is_player and jogadores.perfil_do(usuario) is None:
+            messages.success(self.request, "Conta criada! Agora conte rapidinho como você joga.")
+            return redirect(f"{reverse('arena:configurar_perfil')}?next={destino}")
+        messages.success(self.request, f"Bem-vindo de volta, {usuario.first_name or usuario.username}!")
+        return redirect(destino)
 
 
 class CadastroView(FormView):

@@ -1,0 +1,25 @@
+{% extends "arena/base.html" %}
+{% load arena_extras %}
+
+{% block title %}Código de acesso{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-sm px-4 py-12 sm:py-16">
+  <div class="text-center">
+    <h1 class="titulo text-4xl text-white">Digite o código</h1>
+    <p class="mt-2 text-sm text-zinc-400">Enviamos um código de 6 dígitos para <strong class="text-white">{{ telefone }}</strong>. Ele vale por 10 minutos.</p>
+  </div>
+
+  <form method="post" class="vidro mt-8 space-y-5 rounded-3xl p-6">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    {% include "arena/_campo.html" with campo=form.codigo %}
+    {% include "arena/_campo.html" with campo=form.nome %}
+    <button type="submit" class="w-full rounded-full bg-lime-400 px-5 py-3.5 text-base font-black text-zinc-950 transition hover:bg-lime-300 neon">Entrar</button>
+  </form>
+
+  <p class="mt-6 text-center text-sm text-zinc-500">
+    Não chegou? <a href="{% url 'arena:entrar_telefone' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-zinc-300 hover:text-white">Pedir outro código</a>
+  </p>
+</div>
+{% endblock %}

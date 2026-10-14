@@ -1,56 +1,57 @@
 {% extends "arena/base.html" %}
 {% load arena_extras %}
 
-{% block title %}Minhas inscrições{% endblock %}
+{% block title %}Minhas partidas{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-14">
+<div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Minhas inscrições</h1>
-      <p class="mt-1 text-slate-500">Acompanhe suas próximas partidas e o seu histórico de jogos.</p>
+      <h1 class="titulo text-4xl text-white">Minhas partidas</h1>
+      <p class="mt-1 text-zinc-400">Seus próximos jogos, o histórico e o seu crédito.</p>
     </div>
-    <div class="rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-sm">
-      <p class="text-xs font-medium text-slate-500">Crédito ArenaMatch</p>
-      <p class="text-xl font-semibold text-slate-900">{{ saldo|brl }}</p>
+    <div class="vidro rounded-2xl px-5 py-3">
+      <p class="text-xs font-bold uppercase tracking-widest text-zinc-500">Crédito ArenaMatch</p>
+      <p class="titulo text-2xl text-lime-300">{{ saldo|brl }}</p>
     </div>
   </div>
 
-  <h2 class="mt-10 text-sm font-medium text-slate-500">Próximas partidas</h2>
+  <h2 class="mt-10 text-xs font-bold uppercase tracking-widest text-zinc-500">Próximos jogos</h2>
   <div class="mt-3 space-y-3">
     {% for inscricao in proximas %}
       {% include "arena/_item_inscricao.html" %}
     {% empty %}
-      <div class="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-        <p class="font-semibold text-slate-900">Nenhuma partida marcada</p>
-        <p class="mt-1 text-sm text-slate-500">Que tal entrar em um jogo ainda esta semana?</p>
-        <a href="{% url 'arena:vitrine' %}#partidas" class="mt-5 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">Encontrar partida</a>
+      <div class="vidro rounded-3xl px-6 py-12 text-center">
+        <p class="titulo text-xl text-white">Nenhum jogo marcado</p>
+        <p class="mt-1 text-sm text-zinc-400">Que tal entrar em uma partida ainda esta semana?</p>
+        <a href="{% url 'arena:vitrine' %}" class="mt-6 inline-flex rounded-full bg-lime-400 px-5 py-2.5 text-sm font-black text-zinc-950 neon">Encontrar jogo</a>
       </div>
     {% endfor %}
   </div>
 
-  {% if extrato %}
-    <h2 class="mt-12 text-sm font-medium text-slate-500">Movimentações do crédito</h2>
-    <ul class="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-sm">
-      {% for lancamento in extrato %}
-        <li class="flex items-center justify-between gap-4 px-5 py-3 text-sm">
-          <div class="min-w-0">
-            <p class="truncate text-slate-900">{{ lancamento.descricao }}</p>
-            <p class="text-slate-500">{{ lancamento.created_at|date:"d/m/Y H:i" }} · {{ lancamento.get_tipo_display }}</p>
-          </div>
-          <span class="shrink-0 font-medium tabular-nums {% if lancamento.valor > 0 %}text-emerald-700{% else %}text-slate-700{% endif %}">{{ lancamento.valor|brl }}</span>
-        </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
-
   {% if anteriores %}
-    <h2 class="mt-12 text-sm font-medium text-slate-500">Histórico</h2>
-    <div class="mt-3 space-y-3 opacity-75">
+    <h2 class="mt-12 text-xs font-bold uppercase tracking-widest text-zinc-500">Histórico</h2>
+    <div class="mt-3 space-y-3">
       {% for inscricao in anteriores %}
         {% include "arena/_item_inscricao.html" %}
       {% endfor %}
     </div>
+  {% endif %}
+
+  {% if extrato %}
+    <h2 class="mt-12 text-xs font-bold uppercase tracking-widest text-zinc-500">Movimentações do crédito</h2>
+    <ul class="vidro mt-3 divide-y divide-white/5 rounded-3xl">
+      {% for lancamento in extrato %}
+        <li class="flex items-center justify-between gap-4 px-5 py-3.5 text-sm">
+          <div class="min-w-0">
+            {# A descrição do razão é escrita para a arena (traz o nome do jogador); aqui o texto é do ponto de vista do jogador. #}
+            <p class="truncate text-zinc-200">{% if lancamento.valor > 0 %}Crédito recebido{% else %}Crédito usado{% endif %}{% if lancamento.partida %} · {{ lancamento.partida.time_slot.court.arena.nome }}{% endif %}</p>
+            <p class="text-zinc-500">{% if lancamento.partida %}Jogo de {{ lancamento.partida.time_slot.data|date:"d/m" }} · {% endif %}{{ lancamento.created_at|date:"d/m/Y H:i" }}</p>
+          </div>
+          <span class="shrink-0 font-bold tabular-nums {% if lancamento.valor > 0 %}text-lime-300{% else %}text-zinc-400{% endif %}">{{ lancamento.valor|brl }}</span>
+        </li>
+      {% endfor %}
+    </ul>
   {% endif %}
 </div>
 {% endblock %}

@@ -13,14 +13,15 @@ encontram partidas abertas para completar.
 | Frente | Público | O que entrega |
 | --- | --- | --- |
 | **B2B** | Gestores de complexos esportivos | **ArenaManager**, o portal do gestor: dashboard financeiro, agenda semanal das quadras (mensalistas, avulsos e bloqueios), financeiro e configurações. Com um clique, transforma **horários vagos** em **partidas abertas** para a comunidade. |
-| **B2C** | Jogadores avulsos | Vitrine (web e app mobile) para encontrar partidas abertas por dia, nível, piso e arena, e reservar vagas individuais. |
+| **B2C** | Jogadores avulsos | App web mobile-first para achar partidas por dia, nível, piso, arena ou distância, ver quem vai e garantir a vaga pagando pelo app. |
 
 As duas frentes compartilham o mesmo banco de dados. A receita da arena cresce
 porque horários que ficariam vazios são vendidos vaga a vaga.
 
 A frente B2B é o **Portal do Gestor (ArenaManager)**, em `/manager/`. A frente
-B2C tem uma **vitrine web** e **APIs REST** para o app mobile. O **Django Admin**
-fica como back-office interno da equipe da plataforma.
+B2C tem o **site** em `/`, o **app do jogador** em `/app/` e **APIs REST** para o
+app mobile nativo. O **Django Admin** fica como back-office interno da equipe da
+plataforma.
 
 O pagamento acontece **100% dentro do app** (modelo de take rate): o jogador paga a
 vaga com Pix, cartão ou crédito, o ArenaMatch fica com a taxa de serviço e a parte
@@ -58,6 +59,23 @@ para a classe. As notificações (webhooks) chegam em `/pagamentos/webhook/`.
 | Avaliação pós-jogo | Até 7 dias depois do jogo: nível da partida, elogios (só positivos) e, em partidas com faixa, sinal de que um colega joga acima/abaixo dela. Três colegas diferentes sinalizando a mesma coisa ajustam o nível em um ponto |
 | Times | O sistema sugere dois times de força parecida (nível e posição), com um goleiro em cada |
 
+## App do jogador
+
+| Tela | O que faz |
+| --- | --- |
+| Site (`/`) | Página de apresentação com os jogos em destaque e a proposta para arenas |
+| Feed (`/app/`) | Partidas com os rostos de quem já vai, vagas restantes e preço. Filtros de um toque: dia (hoje, amanhã, fim de semana), "meu nível", piso e "perto de mim" (usa a localização do aparelho e ordena por distância) |
+| Garantir vaga | O botão do feed abre o checkout rápido (Pix, cartão ou crédito; goleiro grátis) sem sair da lista |
+| Entrar | Pelo celular, com código de 6 dígitos por SMS. A conta de jogador é criada no primeiro acesso. Entrar com usuário e senha continua disponível em `/app/entrar/senha/` |
+| Comprovante | QR de check-in, "Adicionar à agenda" e "Como chegar" |
+
+O código de acesso vale 10 minutos, aceita 5 tentativas e o mesmo número pode
+pedir 3 códigos a cada 15 minutos; só o hash do código fica no banco. Em
+desenvolvimento, o SMS sai no log do servidor e o código aparece na própria tela.
+
+Os endereços antigos da vitrine (`/partidas/...`, `/minhas-inscricoes/` etc.)
+redirecionam para os equivalentes em `/app/`.
+
 ## Stack
 
 | Camada | Tecnologia |
@@ -65,7 +83,7 @@ para a classe. As notificações (webhooks) chegam em `/pagamentos/webhook/`.
 | Linguagem | Python 3.15 |
 | Framework web | Django 5.2 LTS |
 | APIs B2C | Django REST Framework 3.18 (token e sessão) |
-| Vitrine web | Templates Django + Tailwind CSS 4 (via CDN) |
+| Site e app do jogador | Templates Django + Tailwind CSS 4 (via CDN), fontes Archivo e Inter |
 | Banco de dados | PostgreSQL 18 (driver psycopg 3), configurado por `DATABASE_URL` |
 | Rotinas automáticas | APScheduler, num processo próprio (`manage.py agendador`) |
 | Configuração | Variáveis de ambiente via `python-dotenv` |
@@ -108,7 +126,8 @@ python manage.py agendador
 
 | Endereço | O que é |
 | --- | --- |
-| <http://127.0.0.1:8000/> | Vitrine para os jogadores (B2C) |
+| <http://127.0.0.1:8000/> | Site de apresentação |
+| <http://127.0.0.1:8000/app/> | App do jogador (B2C) |
 | <http://127.0.0.1:8000/manager/> | Portal do Gestor, o ArenaManager (B2B) |
 | <http://127.0.0.1:8000/api/> | API REST navegável |
 | <http://127.0.0.1:8000/admin/> | Back-office da plataforma (Django Admin) |
@@ -126,9 +145,10 @@ fracas de propósito: **não use esses acessos fora do ambiente local**.
 | Gestor da Arena Gol de Placa | `/manager/` | `carlos.andrade` | `gestor123` |
 | Gestora do Complexo Esportivo Tabelinha | `/manager/` | `fernanda.lima` | `gestor123` |
 | Gestor da Arena Pé na Areia | `/manager/` | `rafael.souza` | `gestor123` |
-| Jogador de demonstração | `/` | `jogador` | `jogador123` |
-| Demais jogadores (ex.: `lucas.oliveira`) | `/` | — | `jogador123` |
-| Superusuário (portal com todas as arenas, back-office e vitrine) | qualquer um | `admin` | `admin123` |
+| Jogador de demonstração | `/app/entrar/senha/` | `jogador` | `jogador123` |
+| Mesmo jogador, pelo celular | `/app/entrar/` | `(11) 90000-0001` | código exibido na tela |
+| Demais jogadores (ex.: `lucas.oliveira`) | `/app/entrar/senha/` | — | `jogador123` |
+| Superusuário (portal com todas as arenas, back-office e app) | qualquer um | `admin` | `admin123` |
 
 Sem os dados de demonstração, crie um administrador com `python manage.py createsuperuser`.
 
@@ -142,6 +162,7 @@ Sem os dados de demonstração, crie um administrador com `python manage.py crea
 | `DATABASE_URL` | Sim | — | Conexão com o PostgreSQL (`postgres://usuario:senha@host:porta/banco`). O usuário precisa de `CREATEDB` para os testes. |
 | `ARENAMATCH_GATEWAY_PAGAMENTO` | Não | `arena.pagamentos.MockGateway` | Classe do gateway de pagamentos. |
 | `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO` | Não | igual a `DJANGO_DEBUG` | Libera o gateway simulado (desenvolvimento, testes e CI). |
+| `ARENAMATCH_SMS_BACKEND` | Não | `arena.acesso.SmsConsole` | Classe que envia o código de acesso por SMS. A padrão só registra no log; em produção, um provedor real. |
 | `ARENAMATCH_URL_BASE` | Não | `http://127.0.0.1:8000` | Endereço público usado nos links dos e-mails. |
 | `DJANGO_EMAIL_BACKEND` | Não | console | Backend de e-mail (em produção, SMTP). |
 
@@ -196,14 +217,16 @@ python manage.py test arena
 │   ├── api/                # Serializers, views, permissões e rotas da API REST
 │   ├── management/         # Comandos populate_db (dados de demonstração) e agendador
 │   ├── migrations/
-│   ├── templates/          # Vitrine e portal (arena/) e customizações do back-office (admin/)
+│   ├── templates/          # App e portal (arena/), site (site/) e customizações do back-office (admin/)
 │   ├── templatetags/       # Filtros de apresentação, ícones e indicadores
-│   ├── tests/              # Testes de modelos, portal, admin, API, vitrine e populate_db
+│   ├── tests/              # Testes de modelos, portal, admin, API, app, site e populate_db
+│   ├── acesso.py           # Entrar pelo celular: código de uso único por SMS
 │   ├── admin.py            # Back-office da plataforma (Django Admin)
 │   ├── agendador.py        # Monta o agendador (APScheduler) com as rotinas registradas
 │   ├── checkout.py         # Inscrição: reserva, pagamento, expiração, cancelamento, repasse, lista de espera
 │   ├── gestao.py           # Cálculos do portal: KPIs, grade da agenda, financeiro
 │   ├── jogadores.py        # Perfil e nível, elegibilidade, check-in, avaliações e times
+│   ├── localizacao.py      # Distância até as arenas ("perto de mim")
 │   ├── models.py           # Entidades e regras de negócio
 │   ├── notificacoes.py     # E-mails aos jogadores (enviados depois do commit)
 │   ├── pagamentos.py       # Interface Gateway e o MockGateway de desenvolvimento
@@ -212,7 +235,7 @@ python manage.py test arena
 │   ├── rotinas.py          # Rotinas automáticas (@rotina) executadas pelo agendador
 │   ├── urls_gestor.py      # Rotas do Portal do Gestor (/manager/)
 │   ├── validators.py       # CPF, CNPJ (inclusive alfanumérico) e telefone
-│   └── views.py            # Vitrine (B2C) e Portal do Gestor (B2B)
+│   └── views.py            # Site, app do jogador (B2C) e Portal do Gestor (B2B)
 ├── config/                 # settings, urls, wsgi/asgi
 ├── .env.example            # Modelo de variáveis de ambiente (o .env real não é versionado)
 ├── manage.py
@@ -221,19 +244,24 @@ python manage.py test arena
 
 ## Roadmap
 
-O MVP (modelagem, painel B2B, APIs e vitrine) está implementado. Próximos passos:
+Implementado: portal B2B, pagamento in-app com razão contábil, perfis e níveis,
+check-in, avaliações, site, app do jogador e login pelo celular. Próximos passos:
 
 1. **Pagamentos:** trocar o `MockGateway` por um gateway real com split (Mercado Pago, Pagar.me ou Asaas).
-2. **Agenda recorrente:** gerar horários de mensalistas e ociosos em lote.
-3. **Notificações:** e-mail e WhatsApp na inscrição e no cancelamento de partidas.
-4. **Produção:** build do Tailwind (sem CDN), arquivos estáticos e deploy.
+2. **SMS e login social:** provedor real de SMS para o código de acesso e entrar com Google (precisa de credenciais OAuth).
+3. **Agenda recorrente:** gerar horários de mensalistas e ociosos em lote.
+4. **Notificações:** WhatsApp, além do e-mail, na inscrição e no cancelamento de partidas.
+5. **Produção:** build do Tailwind (sem CDN), arquivos estáticos e deploy.
 
 ## Convenções
 
 - Commits seguem o padrão [Conventional Commits](https://www.conventionalcommits.org/pt-br/)
   (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`).
 - Código em conformidade com a PEP 8, com type hints e docstrings.
-- Interface "Clean SaaS" com Tailwind: fundo `slate-50`, cartões brancos com borda
+- Portal do Gestor em "Clean SaaS": fundo `slate-50`, cartões brancos com borda
   sutil e `shadow-sm`, destaque `emerald-600` e texto `slate-800`/`slate-900`, sem gradientes.
+- Site e app do jogador em tema escuro: fundo `zinc-950`, destaques neon `lime-400`
+  (ação) e `cyan-400` (informação), superfícies de vidro (`vidro`) e títulos em Archivo
+  extra-negrito (`titulo`). As utilidades ficam em `arena/templates/arena/_head.html`.
 - Regras de negócio ficam nos modelos (`clean()`), e `save()` sempre valida.
 - Segredos (`.env`) **nunca** são versionados.
