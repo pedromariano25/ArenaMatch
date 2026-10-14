@@ -87,6 +87,6 @@ def criar_partida(vagas: int = 2, horario: TimeSlot | None = None, **dados: Any)
     valores = {
         "time_slot": horario or criar_horario(status=StatusHorario.OCIOSO),
         "vagas_totais": vagas,
-        "preco_por_vaga": Decimal("25.00"),
+        "valor_total_aluguel": Decimal("25.00") * vagas,
     }
     return OpenMatch.objects.create(**(valores | dados))

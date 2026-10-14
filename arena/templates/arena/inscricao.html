@@ -40,7 +40,7 @@
       <div><dt class="text-slate-500">Horário</dt><dd class="mt-0.5 font-medium text-slate-900">{{ horario.intervalo }}</dd></div>
       <div><dt class="text-slate-500">Jogador</dt><dd class="mt-0.5 font-medium text-slate-900">{{ inscricao.player.get_full_name|default:inscricao.player.username }}</dd></div>
       <div><dt class="text-slate-500">Nível</dt><dd class="mt-0.5 font-medium text-slate-900">{{ partida.get_nivel_competitividade_display }}</dd></div>
-      <div><dt class="text-slate-500">Valor</dt><dd class="mt-0.5 font-medium text-slate-900">{{ partida.preco_por_vaga|brl }}</dd></div>
+      <div><dt class="text-slate-500">Valor</dt><dd class="mt-0.5 font-medium text-slate-900">{{ inscricao.valor_total|brl }}</dd></div>
       <div>
         <dt class="text-slate-500">Pagamento</dt>
         <dd class="mt-1"><span class="inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ inscricao.status_pagamento|classes_pagamento }}">{{ inscricao.get_status_pagamento_display }}</span></dd>

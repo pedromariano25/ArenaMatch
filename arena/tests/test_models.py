@@ -249,18 +249,17 @@ class BookingTest(TestCase):
         b1.save()  # não é nova ocupação: permitido mesmo com a partida lotada
         self.assertEqual(self.estado(), (0, StatusPartida.LOTADA))
 
-    def test_reduzir_vagas_totais(self):
+    def test_vagas_travadas_apos_inscricao(self):
         j1, j2, _ = self.jogadores
         self.inscrever(j1)
         self.inscrever(j2)
-        self.partida.refresh_from_db()
-        self.partida.vagas_totais = 1
-        with self.assertRaises(ValidationError) as ctx:
-            self.partida.save()
-        self.assertIn("vagas_totais", ctx.exception.message_dict)
-        self.partida.vagas_totais = 5
-        self.partida.save()
-        self.assertEqual(self.estado(), (3, StatusPartida.ABERTA))
+        for vagas in (1, 5):
+            self.partida.refresh_from_db()
+            self.partida.vagas_totais = vagas
+            with self.assertRaises(ValidationError) as ctx:
+                self.partida.save()
+            self.assertIn("ficam travados", str(ctx.exception))
+        self.assertEqual(self.estado(), (0, StatusPartida.LOTADA))
 
     def test_jogador_sem_flag(self):
         with self.assertRaises(ValidationError) as ctx:

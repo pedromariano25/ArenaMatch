@@ -22,10 +22,10 @@
 <dl class="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
   <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <div class="flex items-start justify-between gap-3">
-      <dt class="text-sm font-medium text-slate-500">Total recebido no mês</dt>
+      <dt class="text-sm font-medium text-slate-500">Líquido recebido pela quadra no mês</dt>
       <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "dinheiro" "size-5" %}</span>
     </div>
-    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.recebido_mes|brl }}</dd>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.liquido_mes|brl }}</dd>
     <dd class="mt-1 text-sm text-slate-500">{{ indicadores.pagamentos_mes }} vaga{{ indicadores.pagamentos_mes|pluralize }} paga{{ indicadores.pagamentos_mes|pluralize }} em {{ hoje|date:"F"|lower }}</dd>
   </div>
 
@@ -34,8 +34,8 @@
       <dt class="text-sm font-medium text-slate-500">A receber</dt>
       <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">{% icone "relogio" "size-5" %}</span>
     </div>
-    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.a_receber|brl }}</dd>
-    <dd class="mt-1 text-sm text-slate-500">Inscrições com pagamento pendente</dd>
+    <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.liquido_pendente|brl }}</dd>
+    <dd class="mt-1 text-sm text-slate-500">Repasse da quadra em inscrições pendentes</dd>
   </div>
 
   <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -45,7 +45,7 @@
     </div>
     <dd class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ indicadores.horarios_vagos }}</dd>
     <dd class="mt-1 text-sm text-slate-500">
-      Cada um rende até <span class="font-medium text-slate-700">{{ indicadores.potencial_por_horario|brl }}</span> como partida aberta.
+      Cada um pode repassar <span class="font-medium text-slate-700">{{ indicadores.aluguel_por_horario|brl }}</span> à quadra ao lotar.
       <a href="{% url 'gestor:agenda' %}" class="font-medium text-emerald-700 hover:text-emerald-800">Ver na agenda</a>
     </dd>
   </div>
@@ -65,7 +65,7 @@
     <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
       <div>
         <h2 id="titulo-partidas" class="text-base font-semibold text-slate-900">Próximas partidas abertas</h2>
-        <p class="mt-0.5 text-sm text-slate-500">Vagas vendidas e valores de cada partida publicada no app</p>
+      <p class="mt-0.5 text-sm text-slate-500">Vagas vendidas e repasse líquido da quadra</p>
       </div>
       <a href="{% url 'gestor:agenda' %}" class="shrink-0 text-sm font-medium text-emerald-700 hover:text-emerald-800">Ver agenda</a>
     </div>
@@ -78,8 +78,8 @@
               <th scope="col" class="px-5 py-3">Partida</th>
               <th scope="col" class="px-3 py-3">Quadra</th>
               <th scope="col" class="px-3 py-3">Vagas vendidas</th>
-              <th scope="col" class="px-3 py-3 text-right">Arrecadado</th>
-              <th scope="col" class="px-5 py-3 text-right">A receber</th>
+              <th scope="col" class="px-3 py-3 text-right">Recebido</th>
+              <th scope="col" class="px-5 py-3 text-right">Pendente</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
@@ -100,8 +100,8 @@
                     <div class="h-1.5 rounded-full bg-emerald-600" style="width: {{ partida.percentual_ocupado }}%"></div>
                   </div>
                 </td>
-                <td class="whitespace-nowrap px-3 py-3 text-right font-medium text-slate-900 tabular-nums">{{ item.arrecadado|brl }}</td>
-                <td class="whitespace-nowrap px-5 py-3 text-right text-slate-500 tabular-nums">{{ item.a_receber|brl }}</td>
+                <td class="whitespace-nowrap px-3 py-3 text-right font-medium text-slate-900 tabular-nums">{{ item.liquido_pago|brl }}</td>
+                <td class="whitespace-nowrap px-5 py-3 text-right text-slate-500 tabular-nums">{{ item.liquido_pendente|brl }}</td>
               </tr>
               {% endwith %}
             {% endfor %}

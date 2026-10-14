@@ -434,7 +434,7 @@ class TimeSlotAdmin(EscopoGestorAdmin):
                 OpenMatch.objects.create(
                     time_slot=horario,
                     vagas_totais=dados["vagas_totais"] or horario.court.capacidade_padrao,
-                    preco_por_vaga=dados["preco_por_vaga"],
+                    valor_total_aluguel=dados["valor_total_aluguel"],
                     nivel_competitividade=dados["nivel_competitividade"],
                 )
                 criadas += 1
@@ -517,7 +517,8 @@ class OpenMatchAdmin(EscopoGestorAdmin):
                 "fields": (
                     ("vagas_totais", "vagas_disponiveis"),
                     "ocupacao",
-                    ("preco_por_vaga", "nivel_competitividade"),
+                    ("valor_total_aluguel", "taxa_plataforma_percentual"),
+                    "nivel_competitividade",
                 )
             },
         ),
@@ -561,9 +562,9 @@ class OpenMatchAdmin(EscopoGestorAdmin):
             return "—"
         return _barra_ocupacao(obj)
 
-    @admin.display(description="preço/vaga", ordering="preco_por_vaga")
+    @admin.display(description="preço/jogador", ordering="valor_total_aluguel")
     def preco(self, obj: OpenMatch) -> str:
-        return formatar_brl(obj.preco_por_vaga)
+        return formatar_brl(obj.preco_final_jogador)
 
     @admin.display(description="status", ordering="status")
     def status_selo(self, obj: OpenMatch) -> SafeString:
@@ -660,9 +661,9 @@ class BookingAdmin(EscopoGestorAdmin):
     def status_pagamento_selo(self, obj: Booking) -> SafeString:
         return _selo(obj.status_pagamento, obj.get_status_pagamento_display())
 
-    @admin.display(description="valor", ordering="open_match__preco_por_vaga")
+    @admin.display(description="valor", ordering="valor_vaga")
     def valor(self, obj: Booking) -> str:
-        return formatar_brl(obj.open_match.preco_por_vaga)
+        return formatar_brl(obj.valor_total)
 
     @admin.action(description="Marcar como pago", permissions=["change"])
     def marcar_como_pago(self, request: HttpRequest, queryset: QuerySet) -> None:

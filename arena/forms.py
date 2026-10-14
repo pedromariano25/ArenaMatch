@@ -15,13 +15,14 @@ from .models import Arena, Court, CustomUser, NivelCompetitividade, TipoPiso
 class ConverterPartidaForm(forms.Form):
     """Parâmetros da action que converte horários livres em partidas abertas."""
 
-    preco_por_vaga = forms.DecimalField(
-        label="Preço por vaga (R$)",
-        min_value=Decimal("0"),
-        max_digits=8,
+    valor_total_aluguel = forms.DecimalField(
+        label="Valor total do aluguel (R$)",
+        min_value=Decimal("0.01"),
+        max_digits=10,
         decimal_places=2,
-        initial=Decimal("25.00"),
+        initial=Decimal("200.00"),
         localize=True,
+        help_text="Quanto a quadra recebe com todas as vagas vendidas. O preço da vaga é calculado.",
     )
     nivel_competitividade = forms.ChoiceField(
         label="Nível",
@@ -119,27 +120,33 @@ class FiltroVitrineForm(forms.Form):
 
 
 class AbrirPartidaForm(forms.Form):
-    """Botão "Transformar em Partida Aberta" da agenda do gestor."""
+    """Botão "Transformar em Partida Aberta" da agenda do gestor.
+
+    O gestor informa só o aluguel e as vagas; o nível é opcional (padrão: Misto).
+    """
 
     quadra = forms.ModelChoiceField(queryset=Court.objects.none())
     dia = forms.DateField()
     hora_inicio = forms.TimeField()
     hora_fim = forms.TimeField()
-    preco_por_vaga = forms.DecimalField(
-        label="Preço por vaga (R$)",
-        min_value=Decimal("0"),
-        max_digits=8,
+    valor_total_aluguel = forms.DecimalField(
+        label="Valor do aluguel (R$)",
+        min_value=Decimal("0.01"),
+        max_digits=10,
         decimal_places=2,
         localize=True,
     )
-    nivel_competitividade = forms.ChoiceField(
-        label="Nível", choices=NivelCompetitividade.choices, initial=NivelCompetitividade.MISTO
-    )
     vagas_totais = forms.IntegerField(label="Vagas", min_value=1, max_value=32767, required=False)
+    nivel_competitividade = forms.ChoiceField(
+        label="Nível", choices=NivelCompetitividade.choices, required=False
+    )
 
     def __init__(self, *args: Any, quadras: QuerySet[Court], **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.fields["quadra"].queryset = quadras
+
+    def clean_nivel_competitividade(self) -> str:
+        return self.cleaned_data["nivel_competitividade"] or NivelCompetitividade.MISTO
 
 
 class ArenaConfigForm(forms.ModelForm):

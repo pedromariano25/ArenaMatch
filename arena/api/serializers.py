@@ -49,6 +49,12 @@ class PartidaSerializer(serializers.ModelSerializer):
     nivel_display = serializers.CharField(source="get_nivel_competitividade_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     vagas_ocupadas = serializers.IntegerField(read_only=True)
+    preco_final_jogador = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+        help_text="Valor cobrado do jogador: parte da quadra + taxa de conveniência.",
+    )
     aceita_inscricoes = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -66,7 +72,7 @@ class PartidaSerializer(serializers.ModelSerializer):
             "vagas_totais",
             "vagas_disponiveis",
             "vagas_ocupadas",
-            "preco_por_vaga",
+            "preco_final_jogador",
             "status",
             "status_display",
             "aceita_inscricoes",
@@ -75,7 +81,6 @@ class PartidaSerializer(serializers.ModelSerializer):
             "nivel_competitividade",
             "vagas_totais",
             "vagas_disponiveis",
-            "preco_por_vaga",
             "status",
         )
 

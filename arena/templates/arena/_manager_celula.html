@@ -24,7 +24,7 @@
       <div class="mt-1 h-1 rounded-full bg-emerald-100" role="img" aria-label="{{ celula.partida.percentual_ocupado }}% das vagas vendidas">
         <div class="h-1 rounded-full bg-emerald-600" style="width: {{ celula.partida.percentual_ocupado }}%"></div>
       </div>
-      <p class="mt-1 text-[11px] text-slate-600 tabular-nums">{{ celula.arrecadado|brl }} recebidos</p>
+      <p class="mt-1 text-[11px] text-slate-600 tabular-nums">{{ celula.liquido|brl }} recebidos pela quadra</p>
     {% else %}
       <p class="mt-1.5 text-[11px] text-slate-500 tabular-nums">{{ celula.intervalo }}</p>
     {% endif %}

@@ -86,7 +86,7 @@ class AdminConversaoTest(TestCase):
     def test_aplicar_cria_partidas_com_capacidade_da_quadra(self):
         dados = self.selecao | {
             "aplicar": "1",
-            "preco_por_vaga": "27,50",
+            "valor_total_aluguel": "275,00",
             "nivel_competitividade": "avancado",
             "vagas_totais": "",
         }
@@ -95,8 +95,8 @@ class AdminConversaoTest(TestCase):
         partida = OpenMatch.objects.get()
         self.assertEqual(partida.time_slot, self.ocioso)
         self.assertEqual(
-            (partida.vagas_totais, partida.vagas_disponiveis, partida.preco_por_vaga, partida.nivel_competitividade),
-            (10, 10, Decimal("27.50"), "avancado"),
+            (partida.vagas_totais, partida.vagas_disponiveis, partida.valor_total_aluguel, partida.nivel_competitividade),
+            (10, 10, Decimal("275.00"), "avancado"),
         )
 
 

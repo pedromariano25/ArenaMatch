@@ -8,13 +8,13 @@ formulários.
 
 import uuid
 from datetime import date, datetime, time, timedelta
-from decimal import Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from typing import Any, Self
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 from django.db.models import F, Q
 from django.db.models.signals import post_delete
@@ -27,6 +27,10 @@ from .validators import normalizar_documento, validar_cnpj, validar_cpf, validar
 
 # Usado como ``hora_fim``, 00:00 representa o fim do dia (24:00).
 MEIA_NOITE = time(0, 0)
+
+CENTAVO = Decimal("0.01")
+# Taxa de serviço da plataforma, cobrada do jogador sobre a parte da quadra em cada vaga.
+TAXA_PLATAFORMA_PADRAO = Decimal("15.00")
 
 
 # --- Choices -----------------------------------------------------------------
@@ -460,7 +464,12 @@ class OpenMatchQuerySet(models.QuerySet):
 
 
 class OpenMatch(ValidatedModel):
-    """Partida aberta à comunidade, criada a partir de um horário livre da agenda."""
+    """Partida aberta à comunidade, criada a partir de um horário livre da agenda.
+
+    Motor financeiro: o gestor define o valor total do aluguel e as vagas; o sistema
+    calcula a parte da quadra em cada vaga e soma a taxa de serviço da plataforma,
+    paga pelo jogador. Com todas as vagas vendidas, a quadra recebe o aluguel cheio.
+    """
 
     time_slot = models.OneToOneField(
         TimeSlot,
@@ -478,11 +487,20 @@ class OpenMatch(ValidatedModel):
         editable=False,
         help_text="Calculado automaticamente: vagas totais menos inscrições pendentes ou pagas.",
     )
-    preco_por_vaga = models.DecimalField(
-        "preço por vaga (R$)",
-        max_digits=8,
+    valor_total_aluguel = models.DecimalField(
+        "valor total do aluguel (R$)",
+        max_digits=10,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0"))],
+        validators=[MinValueValidator(CENTAVO)],
+        help_text="Quanto a quadra recebe com todas as vagas vendidas.",
+    )
+    taxa_plataforma_percentual = models.DecimalField(
+        "taxa da plataforma (%)",
+        max_digits=5,
+        decimal_places=2,
+        default=TAXA_PLATAFORMA_PADRAO,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+        help_text="Taxa de serviço cobrada do jogador sobre a parte da quadra em cada vaga.",
     )
     nivel_competitividade = models.CharField(
         "nível de competitividade",
@@ -537,13 +555,73 @@ class OpenMatch(ValidatedModel):
         """Indica se a partida está aberta (com vaga) e ainda não começou."""
         return self.status == StatusPartida.ABERTA and not self.time_slot.ja_comecou
 
+    @property
+    def preco_vaga_base(self) -> Decimal:
+        """Parcela exibida da quadra por vaga, truncada no centavo.
+
+        O resíduo do rateio é conciliado em ``ajuste_repasse_fechamento`` quando
+        todas as vagas são ocupadas. Assim, R$ 200 ÷ 14 aparece como R$ 14,28,
+        sem reduzir o repasse total da quadra.
+        """
+        if not self.vagas_totais or self.valor_total_aluguel is None:
+            return Decimal("0.00")
+        return (self.valor_total_aluguel / self.vagas_totais).quantize(CENTAVO, rounding=ROUND_DOWN)
+
+    @property
+    def valor_taxa_vaga(self) -> Decimal:
+        """Receita da plataforma por vaga (taxa de conveniência paga pelo jogador)."""
+        taxa = self.taxa_plataforma_percentual or Decimal("0")
+        return (self.preco_vaga_base * taxa / 100).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+    @property
+    def preco_final_jogador(self) -> Decimal:
+        """Valor cobrado do jogador no app: parte da quadra + taxa de conveniência."""
+        return self.preco_vaga_base + self.valor_taxa_vaga
+
+    @property
+    def ajuste_repasse_fechamento(self) -> Decimal:
+        """Resíduo do aluguel a conciliar no repasse quando todas as vagas forem ocupadas.
+
+        O ajuste sai da receita agregada da plataforma. Ele não altera o preço
+        anunciado nem a parcela individual congelada em cada inscrição.
+        """
+        if (
+            self.status == StatusPartida.CANCELADA
+            or self.vagas_disponiveis != 0
+            or not self.vagas_totais
+            or self.valor_total_aluguel is None
+        ):
+            return Decimal("0.00")
+        residuo = self.valor_total_aluguel - self.preco_vaga_base * self.vagas_totais
+        return max(residuo, Decimal("0.00")).quantize(CENTAVO)
+
     def clean(self) -> None:
-        """Valida o horário de origem e recalcula as vagas disponíveis e o status."""
+        """Valida horário e preço e recalcula as vagas disponíveis e o status."""
         super().clean()
         if self.status in STATUS_PARTIDA_ATIVA:
             self._validar_horario_livre()
+        self._validar_preco_travado()
         if self.vagas_totais is not None:
             self._recalcular_vagas()
+
+    def _validar_preco_travado(self) -> None:
+        """Depois da primeira inscrição ativa, aluguel, vagas e taxa não mudam.
+
+        Assim todos os jogadores da partida pagam o mesmo valor e a soma das vagas
+        continua cobrindo o aluguel combinado com a quadra.
+        """
+        if self._state.adding:
+            return
+        campos = ("valor_total_aluguel", "vagas_totais", "taxa_plataforma_percentual")
+        salvo = OpenMatch.objects.filter(pk=self.pk).values(*campos).first()
+        if salvo is None or all(salvo[campo] == getattr(self, campo) for campo in campos):
+            return
+        if Booking.objects.filter(open_match_id=self.pk, status_pagamento__in=STATUS_OCUPA_VAGA).exists():
+            raise ValidationError(
+                "O aluguel, as vagas e a taxa ficam travados depois da primeira inscrição. "
+                "Para mudar, reembolse as inscrições ou abra outra partida.",
+                code="preco_travado",
+            )
 
     def atualizar_vagas(self) -> None:
         """Recalcula e persiste as vagas e o status depois de mudanças nas inscrições."""
@@ -597,8 +675,10 @@ class OpenMatch(ValidatedModel):
 class Booking(ValidatedModel):
     """Inscrição de um jogador em uma partida aberta.
 
-    Mudanças de status devem passar por ``save()``, e não por ``QuerySet.update()``,
-    para que as vagas da partida sejam recalculadas.
+    Os valores da vaga (parte da quadra e taxa da plataforma) são congelados na
+    inscrição: relatórios financeiros usam esses valores, e não o preço atual da
+    partida. Mudanças de status devem passar por ``save()``, e não por
+    ``QuerySet.update()``, para que as vagas da partida sejam recalculadas.
     """
 
     open_match = models.ForeignKey(
@@ -621,6 +701,22 @@ class Booking(ValidatedModel):
         default=StatusPagamento.PENDENTE,
     )
     data_inscricao = models.DateTimeField("data de inscrição", default=timezone.now)
+    valor_vaga = models.DecimalField(
+        "valor para a quadra (R$)",
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        editable=False,
+        help_text="Parte do aluguel paga nesta vaga (repasse à quadra), congelada na inscrição.",
+    )
+    valor_taxa = models.DecimalField(
+        "taxa de conveniência (R$)",
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        editable=False,
+        help_text="Receita da plataforma nesta vaga, congelada na inscrição.",
+    )
 
     class Meta:
         verbose_name = "inscrição"
@@ -643,6 +739,11 @@ class Booking(ValidatedModel):
     def ocupa_vaga(self) -> bool:
         """Indica se a inscrição ocupa vaga (pagamento pendente ou pago)."""
         return self.status_pagamento in STATUS_OCUPA_VAGA
+
+    @property
+    def valor_total(self) -> Decimal:
+        """Valor pago pelo jogador: parte da quadra + taxa de conveniência."""
+        return self.valor_vaga + self.valor_taxa
 
     @property
     def pode_cancelar(self) -> bool:
@@ -691,6 +792,7 @@ class Booking(ValidatedModel):
         A partida é recarregada com ``select_for_update()`` para serializar
         inscrições concorrentes na última vaga. No PostgreSQL, isso é feito por
         bloqueio de linha. No SQLite, por ``transaction_mode=IMMEDIATE`` (settings).
+        Na criação, os valores da vaga são copiados da partida.
         """
         with transaction.atomic():
             try:
@@ -699,6 +801,10 @@ class Booking(ValidatedModel):
                 )
             except OpenMatch.DoesNotExist:
                 pass  # full_clean() reportará a partida ausente ou inválida.
+            else:
+                if self._state.adding:
+                    self.valor_vaga = self.open_match.preco_vaga_base
+                    self.valor_taxa = self.open_match.valor_taxa_vaga
             super().save(*args, **kwargs)
             self.open_match.atualizar_vagas()
 

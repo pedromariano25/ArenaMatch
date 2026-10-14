@@ -27,7 +27,8 @@ class VitrineTest(TestCase):
     def test_detalhe_da_partida(self):
         resposta = self.client.get(self.partida.get_absolute_url())
         self.assertContains(resposta, "Reservar minha vaga")
-        self.assertContains(resposta, "R$ 25,00")
+        # R$ 25,00 da quadra + 15% de taxa de conveniência.
+        self.assertContains(resposta, "R$ 28,75")
 
 
 class ReservaTest(TestCase):

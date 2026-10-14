@@ -77,7 +77,7 @@ class DashboardTest(PortalBase):
         partida = criar_partida(
             vagas=4,
             horario=criar_horario(self.quadra, time(19), time(20), status=StatusHorario.OCIOSO),
-            preco_por_vaga=Decimal("30.00"),
+            valor_total_aluguel=Decimal("120.00"),
         )
         Booking.objects.create(open_match=partida, player=criar_jogador(), status_pagamento=StatusPagamento.PAGO)
         Booking.objects.create(open_match=partida, player=criar_jogador())
@@ -86,14 +86,14 @@ class DashboardTest(PortalBase):
         self.assertEqual(resposta.status_code, 200)
         indicadores = resposta.context["indicadores"]
         if partida.time_slot.data.month == timezone.localdate().month:
-            self.assertEqual(indicadores.recebido_mes, Decimal("30.00"))
-        self.assertEqual(indicadores.a_receber, Decimal("30.00"))
+            self.assertEqual(indicadores.liquido_mes, Decimal("30.00"))
+        self.assertEqual(indicadores.liquido_pendente, Decimal("30.00"))
         self.assertEqual(indicadores.horarios_mensalistas, 1)
         self.assertGreater(indicadores.horarios_vagos, 0)
-        self.assertEqual(indicadores.potencial_por_horario, Decimal("300.00"))
+        self.assertEqual(indicadores.aluguel_por_horario, Decimal("120.00"))
 
         resumo = resposta.context["proximas"][0]
-        self.assertEqual((resumo.arrecadado, resumo.a_receber), (Decimal("30.00"), Decimal("30.00")))
+        self.assertEqual((resumo.liquido_pago, resumo.liquido_pendente), (Decimal("30.00"), Decimal("30.00")))
         self.assertContains(resposta, "Próximas partidas abertas")
 
 
@@ -126,7 +126,7 @@ class AgendaTest(PortalBase):
                 "dia": dia.isoformat(),
                 "hora_inicio": "20:00",
                 "hora_fim": "21:00",
-                "preco_por_vaga": "27,50",
+                "valor_total_aluguel": "275,00",
                 "nivel_competitividade": "avancado",
                 "vagas_totais": "",
                 "voltar": f"{reverse('gestor:agenda')}?semana={dia.isoformat()}",
@@ -137,8 +137,8 @@ class AgendaTest(PortalBase):
         partida = OpenMatch.objects.get()
         self.assertEqual(partida.time_slot.status, StatusHorario.OCIOSO)
         self.assertEqual(
-            (partida.vagas_totais, partida.preco_por_vaga, partida.status),
-            (10, Decimal("27.50"), StatusPartida.ABERTA),
+            (partida.vagas_totais, partida.valor_total_aluguel, partida.status),
+            (10, Decimal("275.00"), StatusPartida.ABERTA),
         )
 
     def test_reabre_partida_cancelada_e_recusa_horario_reservado(self):
@@ -162,7 +162,7 @@ class AgendaTest(PortalBase):
                 "dia": amanha().isoformat(),
                 "hora_inicio": "19:00",
                 "hora_fim": "20:00",
-                "preco_por_vaga": "20",
+                "valor_total_aluguel": "200",
                 "nivel_competitividade": "misto",
             },
         )

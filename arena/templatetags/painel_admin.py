@@ -46,9 +46,9 @@ def indicadores_painel(context: dict[str, Any]) -> dict[str, Any]:
         open_match__time_slot__data__range=periodo,
     )
     receita = inscricoes.aggregate(
-        paga=Sum("open_match__preco_por_vaga", filter=Q(status_pagamento=StatusPagamento.PAGO)),
+        paga=Sum("valor_vaga", filter=Q(status_pagamento=StatusPagamento.PAGO)),
         pendente=Sum(
-            "open_match__preco_por_vaga", filter=Q(status_pagamento=StatusPagamento.PENDENTE)
+            "valor_vaga", filter=Q(status_pagamento=StatusPagamento.PENDENTE)
         ),
     )
 

@@ -47,7 +47,7 @@
   </div>
 
   <div class="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-    <p><span class="text-lg font-semibold text-slate-900">{{ partida.preco_por_vaga|brl }}</span> <span class="text-sm text-slate-500">/ jogador</span></p>
+    <p><span class="text-lg font-semibold text-slate-900">{{ partida.preco_final_jogador|brl }}</span> <span class="text-sm text-slate-500">/ jogador</span></p>
     {% if partida.status == "lotada" %}
       <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400">Lotada</span>
     {% else %}

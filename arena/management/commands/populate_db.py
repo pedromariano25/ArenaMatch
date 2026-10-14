@@ -350,7 +350,7 @@ class Command(BaseCommand):
                     OpenMatch.objects.create(
                         time_slot=horario,
                         vagas_totais=vagas,
-                        preco_por_vaga=Decimal(self.rng.choice(PRECOS_POR_PISO[quadra.tipo_piso])),
+                        valor_total_aluguel=Decimal(self.rng.choice(PRECOS_POR_PISO[quadra.tipo_piso])) * vagas,
                         nivel_competitividade=self.rng.choices(niveis, weights=(45, 25, 30))[0],
                     )
                 )

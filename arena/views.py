@@ -333,7 +333,7 @@ class GestorAgendaView(GestorRequiredMixin, TemplateView):
             semana_anterior=inicio - timedelta(days=7),
             proxima_semana=inicio + timedelta(days=7),
             semana_atual=gestao.inicio_da_semana(hoje),
-            preco_sugerido=gestao.preco_sugerido(quadra) if quadra else None,
+            aluguel_sugerido=gestao.aluguel_sugerido(quadra) if quadra else None,
             niveis=NivelCompetitividade.choices,
         )
         return contexto
@@ -355,7 +355,7 @@ class GestorAbrirPartidaView(GestorRequiredMixin, View):
                 dados["dia"],
                 dados["hora_inicio"],
                 dados["hora_fim"],
-                dados["preco_por_vaga"],
+                dados["valor_total_aluguel"],
                 dados["nivel_competitividade"],
                 dados["vagas_totais"],
             )
@@ -372,7 +372,7 @@ class GestorAbrirPartidaView(GestorRequiredMixin, View):
 
 
 class GestorFinanceiroView(GestorRequiredMixin, TemplateView):
-    """Recebimentos, valores pendentes e reembolsos das inscrições da arena."""
+    """Valor líquido da quadra: recebido, pendente e reembolsado, por inscrição."""
 
     template_name = "arena/manager_financeiro.html"
     secao = "financeiro"
