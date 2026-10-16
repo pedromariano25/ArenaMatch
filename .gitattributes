@@ -1,0 +1,2 @@
+# Scripts de shell sempre com LF (rodam no Linux do Render).
+*.sh text eol=lf

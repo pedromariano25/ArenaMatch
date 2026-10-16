@@ -1,29 +1,21 @@
 {% load arena_extras %}<!doctype html>
-<html lang="pt-BR" class="h-full bg-slate-50">
+<html lang="pt-BR" class="bg-zinc-950">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Portal do gestor{% endblock %} · ArenaManager</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23059669'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
-  <style type="text/tailwindcss">
-    @theme {
-      --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-    }
-  </style>
+  {% include "arena/_head.html" %}
+  <title>{% block title %}Portal da arena{% endblock %} · ArenaMatch para arenas</title>
 </head>
-<body class="flex min-h-full flex-col items-center justify-center px-4 py-12 font-sans text-slate-800 antialiased">
+<body class="flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-4 py-12 font-sans text-zinc-100 antialiased selection:bg-lime-400 selection:text-zinc-950">
+  <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+    <div class="absolute -top-48 left-1/2 h-[28rem] w-[56rem] -translate-x-1/2 rounded-full bg-lime-400/10 blur-3xl"></div>
+  </div>
   <div class="w-full max-w-sm">
-    <div class="flex items-center justify-center gap-3">
-      <span class="grid size-10 place-items-center rounded-lg bg-emerald-600 text-white">{% icone "bola" "size-6" %}</span>
-      <div class="leading-tight">
-        <p class="text-base font-semibold text-slate-900">ArenaManager</p>
-        <p class="text-xs text-slate-500">Portal do gestor</p>
-      </div>
-    </div>
+    <a href="{% url 'inicio' %}" class="flex items-center justify-center gap-2.5">
+      <span class="grid size-10 place-items-center rounded-xl bg-lime-400 text-zinc-950 neon">{% icone "bola" "size-6" %}</span>
+      <span class="leading-none">
+        <span class="titulo block text-xl text-white">ARENA<span class="text-lime-400">MATCH</span></span>
+        <span class="mt-1 block text-xs font-semibold text-zinc-500">Portal da arena</span>
+      </span>
+    </a>
     {% block content %}{% endblock %}
   </div>
 </body>

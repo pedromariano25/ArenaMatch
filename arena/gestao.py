@@ -1,7 +1,7 @@
 """Cálculos e ações do Portal do Gestor (ArenaManager).
 
-Concentra indicadores, grade semanal da agenda e financeiro para manter as views
-enxutas. O gestor vê o valor líquido da quadra (parte do aluguel em cada vaga,
+Concentra os números do painel, a agenda (semanal e do dia, com publicação em um
+toque) e o financeiro para manter as views enxutas. O gestor vê o valor líquido da quadra (parte do aluguel em cada vaga,
 congelada na inscrição). O dinheiro vem do razão contábil: vendas "a liberar"
 até o dia seguinte à partida, saldo disponível e repasses.
 """
@@ -15,19 +15,19 @@ from enum import StrEnum
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q, QuerySet, Sum
+from django.db.models import QuerySet, Sum
 from django.utils import timezone
 
 from . import razao
 from .models import (
     MEIA_NOITE,
     STATUS_HORARIO_LIVRE,
-    STATUS_PARTIDA_ATIVA,
     ZERO,
     Arena,
     Booking,
     Court,
     LedgerEntry,
+    NivelCompetitividade,
     OpenMatch,
     Posicao,
     StatusHorario,
@@ -70,7 +70,7 @@ ROTULOS_CELULA = {
     TipoCelula.BLOQUEADO: "Bloqueado",
     TipoCelula.PARTIDA: "Partida aberta",
     TipoCelula.LOTADA: "Partida lotada",
-    TipoCelula.VAGO: "Vago",
+    TipoCelula.VAGO: "Livre",
     TipoCelula.ENCERRADO: "Encerrado",
 }
 
@@ -113,31 +113,42 @@ class LinhaGrade:
 
 @dataclass(frozen=True)
 class Indicadores:
-    """KPIs do dashboard."""
+    """Os três números do painel: saldo a receber, vagas vendidas e horários ociosos.
 
-    vendido_mes: Decimal
-    vagas_vendidas_mes: int
-    a_liberar: Decimal
+    O saldo liberado é transferido à arena a cada hora (rotina ``gerar_repasses``),
+    então o painel mostra o total a receber (liberado + a liberar) e o que já foi
+    transferido no mês.
+    """
+
     disponivel: Decimal
-    horarios_vagos: int
-    aluguel_por_horario: Decimal
-    horarios_mensalistas: int
-    quadras_com_mensalistas: int
+    a_liberar: Decimal
+    repassado_mes: Decimal
+    vagas_vendidas_mes: int
+    vendido_mes: Decimal
+    horarios_ociosos: int
+    # Aluguel somado dos horários ociosos, se todos virassem partidas e lotassem.
+    potencial_ocioso: Decimal
+
+    @property
+    def a_receber(self) -> Decimal:
+        return self.disponivel + self.a_liberar
 
 
 @dataclass(frozen=True)
-class ResumoPartida:
-    """Partida aberta com o valor da quadra já garantido (pago) e em pagamento."""
+class DiaDoPainel:
+    """Aba de um dia na agenda do painel, com quantos horários ainda estão ociosos."""
 
-    partida: OpenMatch
-    garantido: Decimal
-    em_pagamento: Decimal
+    dia: date
+    ociosos: int
 
-    @property
-    def percentual_do_aluguel(self) -> int:
-        """Quanto do aluguel já foi pago (0 a 100), para a barra de progresso."""
-        aluguel = self.partida.valor_total_aluguel
-        return min(100, round(100 * self.garantido / aluguel)) if aluguel else 0
+
+@dataclass(frozen=True)
+class QuadraDoDia:
+    """Faixas de uma quadra num dia e a partida que um toque num horário ocioso publica."""
+
+    quadra: Court
+    celulas: list[Celula]
+    padrao: OpenMatch
 
 
 # --- Escopo e preços ---------------------------------------------------------
@@ -163,6 +174,23 @@ def aluguel_sugerido(quadra: Court) -> Decimal:
 def vagas_goleiro_sugeridas(vagas: int) -> int:
     """Dois goleiros a partir de 8 jogadores (futsal, society, campo); nenhum abaixo disso."""
     return 2 if vagas >= 8 else 0
+
+
+def partida_padrao(quadra: Court) -> OpenMatch:
+    """Partida (não salva) que a publicação em um toque cria nesta quadra.
+
+    Aluguel sugerido, capacidade da quadra, goleiros sugeridos, nível aberto a
+    todos e o contrato da arena: serve para mostrar o preço antes de publicar.
+    """
+    vagas = quadra.capacidade_padrao
+    return OpenMatch(
+        valor_total_aluguel=aluguel_sugerido(quadra),
+        vagas_totais=vagas,
+        vagas_goleiro=vagas_goleiro_sugeridas(vagas),
+        nivel_competitividade=NivelCompetitividade.ABERTA,
+        taxa_plataforma_percentual=quadra.arena.taxa_plataforma_percentual,
+        taxa_minima=quadra.arena.taxa_minima,
+    )
 
 
 def inicio_da_semana(dia: date) -> date:
@@ -259,17 +287,35 @@ def contagem_por_tipo(linhas: list[LinhaGrade]) -> Counter:
     return Counter(celula.tipo for linha in linhas for celula in linha.celulas)
 
 
-def agenda_de_hoje(arena: Arena) -> list[Celula]:
-    """Reservas e partidas de hoje em todas as quadras, em ordem de horário."""
+def semana_da_arena(arena: Arena) -> tuple[list[date], dict[Court, list[LinhaGrade]]]:
+    """Os próximos 7 dias (a partir de hoje) e a grade de cada quadra nesses dias."""
     hoje = timezone.localdate()
-    celulas = [
-        celula
-        for quadra in arena.quadras.all()
-        for linha in grade_da_quadra(quadra, [hoje])
-        for celula in linha.celulas
-        if celula.tipo not in (TipoCelula.VAGO, TipoCelula.ENCERRADO)
+    dias = [hoje + timedelta(days=i) for i in range(DIAS_DA_SEMANA)]
+    quadras = arena.quadras.select_related("arena").order_by("nome_ou_numero")
+    return dias, {quadra: grade_da_quadra(quadra, dias) for quadra in quadras}
+
+
+def dias_do_painel(dias: list[date], grades: dict[Court, list[LinhaGrade]]) -> list[DiaDoPainel]:
+    """Abas da agenda do painel, com os horários ociosos de cada dia."""
+    return [
+        DiaDoPainel(
+            dia,
+            sum(linha.celulas[indice].tipo == TipoCelula.VAGO for linhas in grades.values() for linha in linhas),
+        )
+        for indice, dia in enumerate(dias)
     ]
-    return sorted(celulas, key=lambda c: (c.inicio, c.quadra.nome_ou_numero))
+
+
+def agenda_do_dia(grades: dict[Court, list[LinhaGrade]], indice: int) -> list[QuadraDoDia]:
+    """Faixas de cada quadra no dia ``indice`` da semana, sem os horários que já passaram."""
+    return [
+        QuadraDoDia(
+            quadra,
+            [c for linha in linhas if (c := linha.celulas[indice]).tipo != TipoCelula.ENCERRADO],
+            partida_padrao(quadra),
+        )
+        for quadra, linhas in grades.items()
+    ]
 
 
 # --- Indicadores e financeiro -------------------------------------------------
@@ -286,15 +332,11 @@ def _vendas_do_mes(arena: Arena, dia: date) -> QuerySet[LedgerEntry]:
     )
 
 
-def indicadores_dashboard(arena: Arena) -> Indicadores:
-    """KPIs: vendas do mês, saldo da carteira, horários vagos e mensalistas (7 dias)."""
+def indicadores_dashboard(arena: Arena, grades: dict[Court, list[LinhaGrade]]) -> Indicadores:
+    """Saldo da carteira, vagas vendidas no mês e horários ociosos nas grades informadas."""
     hoje = timezone.localdate()
-    dias = [hoje + timedelta(days=i) for i in range(DIAS_DA_SEMANA)]
-    quadras = list(arena.quadras.all())
-    celulas = [c for q in quadras for linha in grade_da_quadra(q, dias) for c in linha.celulas]
-    alugueis = {quadra.pk: aluguel_sugerido(quadra) for quadra in quadras}
-    vagas = [c for c in celulas if c.tipo == TipoCelula.VAGO]
-    mensalistas = [c for c in celulas if c.tipo == TipoCelula.MENSALISTA]
+    ociosas = [c for linhas in grades.values() for linha in linhas for c in linha.celulas if c.tipo == TipoCelula.VAGO]
+    alugueis = {quadra.pk: aluguel_sugerido(quadra) for quadra in grades}
     saldo = razao.saldo_da_arena(arena)
     vendidas = Booking.objects.filter(
         open_match__time_slot__court__arena=arena,
@@ -304,46 +346,14 @@ def indicadores_dashboard(arena: Arena) -> Indicadores:
         posicao=Posicao.LINHA,
     )
     return Indicadores(
-        vendido_mes=razao.saldo(_vendas_do_mes(arena, hoje)),
-        vagas_vendidas_mes=vendidas.count(),
-        a_liberar=saldo.a_liberar,
         disponivel=saldo.disponivel,
-        horarios_vagos=len(vagas),
-        # Aluguel que um horário vago rende para a quadra se virar partida e lotar.
-        aluguel_por_horario=max((alugueis[c.quadra.pk] for c in vagas), default=ZERO),
-        horarios_mensalistas=len(mensalistas),
-        quadras_com_mensalistas=len({c.quadra.pk for c in mensalistas}),
+        a_liberar=saldo.a_liberar,
+        repassado_mes=saldo.repassado_no_mes,
+        vagas_vendidas_mes=vendidas.count(),
+        vendido_mes=razao.saldo(_vendas_do_mes(arena, hoje)),
+        horarios_ociosos=len(ociosas),
+        potencial_ocioso=sum((alugueis[c.quadra.pk] for c in ociosas), ZERO),
     )
-
-
-def proximas_partidas(arena: Arena, limite: int = 8) -> list[ResumoPartida]:
-    """Próximas partidas abertas com o valor da quadra já pago e em pagamento."""
-    agora = timezone.now()
-    partidas = (
-        OpenMatch.objects.futuras()
-        .filter(time_slot__court__arena=arena, status__in=STATUS_PARTIDA_ATIVA)
-        .com_relacionados()
-        .com_confirmados()
-        .annotate(
-            pago=Sum("inscricoes__valor_vaga", filter=Q(inscricoes__status=StatusInscricao.CONFIRMADA)),
-            em_pagamento=Sum(
-                "inscricoes__valor_vaga",
-                filter=Q(
-                    inscricoes__status=StatusInscricao.AGUARDANDO_PAGAMENTO,
-                    inscricoes__reservada_ate__gt=agora,
-                ),
-            ),
-        )
-        .order_by("time_slot__data", "time_slot__hora_inicio")[:limite]
-    )
-    return [
-        ResumoPartida(
-            partida,
-            (partida.pago or ZERO) + partida.ajuste_repasse_fechamento,
-            partida.em_pagamento or ZERO,
-        )
-        for partida in partidas
-    ]
 
 
 def resumo_financeiro(arena: Arena) -> dict[str, Decimal | int]:

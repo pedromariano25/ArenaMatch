@@ -1,85 +1,84 @@
 {% extends "arena/manager_base.html" %}
 {% load arena_extras %}
 
-{% block title %}Configurações{% endblock %}
+{% block title %}Ajustes{% endblock %}
 
 {% block content %}
-<div>
-  <p class="text-sm text-slate-500">{{ arena.nome }}</p>
-  <h1 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Configurações</h1>
-  <p class="mt-1 text-sm text-slate-500">Dados exibidos aos jogadores e quadras disponíveis na agenda.</p>
-</div>
+<h1 class="titulo text-3xl text-white sm:text-5xl">Ajustes</h1>
+<p class="mt-2 text-sm text-zinc-400">O que os jogadores veem da arena e as quadras que aparecem na agenda.</p>
 
 <div class="mt-8 grid gap-6 xl:grid-cols-5">
-  <section class="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-3" aria-labelledby="titulo-arena">
-    <div class="border-b border-slate-200 px-5 py-4">
-      <h2 id="titulo-arena" class="text-base font-semibold text-slate-900">Dados da arena</h2>
-      <p class="mt-0.5 text-sm text-slate-500">CNPJ {{ arena.cnpj|cnpj }}</p>
+  <section class="vidro min-w-0 rounded-3xl xl:col-span-3" aria-labelledby="titulo-arena">
+    <div class="border-b border-white/5 px-5 py-4 sm:px-6">
+      <h2 id="titulo-arena" class="text-lg font-bold text-white">Dados da arena</h2>
+      <p class="mt-0.5 text-sm text-zinc-500">CNPJ {{ arena.cnpj|cnpj }}</p>
     </div>
-    <form method="post" class="space-y-5 px-5 py-5">
+    <form method="post" class="space-y-6 px-5 py-6 sm:px-6">
       {% csrf_token %}
-      {% if form_arena.non_field_errors %}<p class="text-sm font-medium text-red-600">{{ form_arena.non_field_errors|join:" " }}</p>{% endif %}
+      {% if form_arena.non_field_errors %}<p class="rounded-2xl bg-rose-400/10 p-3 text-sm text-rose-200 ring-1 ring-rose-400/30 ring-inset">{{ form_arena.non_field_errors|join:" " }}</p>{% endif %}
       <div class="grid gap-5 sm:grid-cols-2">
-        {% include "arena/_manager_campo.html" with campo=form_arena.nome %}
-        {% include "arena/_manager_campo.html" with campo=form_arena.telefone_contato %}
+        {% include "arena/_campo.html" with campo=form_arena.nome %}
+        {% include "arena/_campo.html" with campo=form_arena.telefone_contato %}
       </div>
-      {% include "arena/_manager_campo.html" with campo=form_arena.endereco_completo %}
+      {% include "arena/_campo.html" with campo=form_arena.endereco_completo %}
       <div class="grid gap-5 sm:grid-cols-2">
-        {% include "arena/_manager_campo.html" with campo=form_arena.hora_abertura %}
-        {% include "arena/_manager_campo.html" with campo=form_arena.hora_fechamento %}
+        {% include "arena/_campo.html" with campo=form_arena.hora_abertura %}
+        {% include "arena/_campo.html" with campo=form_arena.hora_fechamento %}
       </div>
-      <div class="border-t border-slate-100 pt-5">
-        <p class="text-sm font-medium text-slate-900">Localização</p>
-        <p class="mt-0.5 text-sm text-slate-500">Coordenadas da arena para o filtro "perto de mim" do app. No Google Maps, clique com o botão direito no local para copiá-las.</p>
+      <fieldset class="border-t border-white/5 pt-6">
+        <legend class="sr-only">Localização</legend>
+        <p class="font-bold text-white">Localização</p>
+        <p class="mt-1 text-sm text-zinc-400">Para o filtro "Perto de mim" do app. No Google Maps, clique com o botão direito no local para copiar as coordenadas.</p>
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          {% include "arena/_manager_campo.html" with campo=form_arena.latitude %}
-          {% include "arena/_manager_campo.html" with campo=form_arena.longitude %}
+          {% include "arena/_campo.html" with campo=form_arena.latitude %}
+          {% include "arena/_campo.html" with campo=form_arena.longitude %}
         </div>
-      </div>
-      <div class="border-t border-slate-100 pt-5">
-        <p class="text-sm font-medium text-slate-900">Mínimo de jogadores</p>
-        <p class="mt-0.5 text-sm text-slate-500">Partidas que não atingem o mínimo de vagas pagas até o prazo são canceladas, e todos os jogadores são reembolsados.</p>
+      </fieldset>
+      <fieldset class="border-t border-white/5 pt-6">
+        <legend class="sr-only">Mínimo de jogadores</legend>
+        <p class="font-bold text-white">Mínimo de jogadores</p>
+        <p class="mt-1 text-sm text-zinc-400">Se a partida não tiver esse mínimo de vagas pagas até o prazo, ela é cancelada e todos recebem o dinheiro de volta.</p>
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
-          {% include "arena/_manager_campo.html" with campo=form_arena.quorum_percentual %}
-          {% include "arena/_manager_campo.html" with campo=form_arena.horas_prazo_quorum %}
+          {% include "arena/_campo.html" with campo=form_arena.quorum_percentual %}
+          {% include "arena/_campo.html" with campo=form_arena.horas_prazo_quorum %}
         </div>
-      </div>
-      <p class="text-xs text-slate-500">Contrato ArenaMatch: taxa de serviço de {{ arena.taxa_plataforma_percentual|floatformat:"-2" }}% (mínimo de {{ arena.taxa_minima|brl }}), paga pelo jogador de linha. Goleiros não pagam.</p>
-      <div class="flex justify-end border-t border-slate-100 pt-5">
-        <button type="submit" name="salvar_arena" class="rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">Salvar alterações</button>
+      </fieldset>
+      <p class="text-xs text-zinc-500">Seu contrato: o jogador de linha paga uma taxa de serviço de {{ arena.taxa_plataforma_percentual|floatformat:"-2" }}% (mínimo de {{ arena.taxa_minima|brl }}) por cima do valor da quadra. Goleiro não paga.</p>
+      <div class="flex justify-end border-t border-white/5 pt-6">
+        <button type="submit" name="salvar_arena" class="botao-neon">Salvar alterações</button>
       </div>
     </form>
   </section>
 
-  <section class="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-2" aria-labelledby="titulo-quadras">
-    <div class="border-b border-slate-200 px-5 py-4">
-      <h2 id="titulo-quadras" class="text-base font-semibold text-slate-900">Quadras</h2>
-      <p class="mt-0.5 text-sm text-slate-500">{{ quadras|length }} quadra{{ quadras|length|pluralize }} na agenda</p>
+  <section class="vidro min-w-0 self-start rounded-3xl xl:col-span-2" aria-labelledby="titulo-quadras">
+    <div class="border-b border-white/5 px-5 py-4 sm:px-6">
+      <h2 id="titulo-quadras" class="text-lg font-bold text-white">Quadras</h2>
+      <p class="mt-0.5 text-sm text-zinc-500">{{ quadras|length }} quadra{{ quadras|length|pluralize }} na agenda</p>
     </div>
-    <ul class="divide-y divide-slate-100">
+    <ul class="divide-y divide-white/5">
       {% for quadra in quadras %}
-        <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+        <li class="flex items-center justify-between gap-3 px-5 py-3.5 text-sm sm:px-6">
           <div>
-            <p class="font-medium text-slate-900">{{ quadra.nome_ou_numero }}</p>
-            <p class="text-slate-500">{{ quadra.get_tipo_piso_display }}</p>
+            <p class="font-bold text-white">{{ quadra.nome_ou_numero }}</p>
+            <p class="text-zinc-500">{{ quadra.get_tipo_piso_display }}</p>
           </div>
-          <span class="text-slate-500 tabular-nums">{{ quadra.capacidade_padrao }} jogadores</span>
+          <span class="text-zinc-400 tabular-nums">{{ quadra.capacidade_padrao }} jogadores</span>
         </li>
       {% empty %}
-        <li class="px-5 py-8 text-center text-sm text-slate-500">Nenhuma quadra cadastrada ainda.</li>
+        <li class="px-5 py-8 text-center text-sm text-zinc-500">Nenhuma quadra ainda. Cadastre a primeira abaixo.</li>
       {% endfor %}
     </ul>
-    <form method="post" class="space-y-4 border-t border-slate-200 bg-slate-50 px-5 py-5">
+    <form method="post" class="space-y-4 border-t border-white/5 px-5 py-6 sm:px-6">
       {% csrf_token %}
-      <p class="text-sm font-medium text-slate-900">Adicionar quadra</p>
-      {% if form_quadra.non_field_errors %}<p class="text-sm font-medium text-red-600">{{ form_quadra.non_field_errors|join:" " }}</p>{% endif %}
-      {% include "arena/_manager_campo.html" with campo=form_quadra.nome_ou_numero %}
+      <p class="font-bold text-white">Adicionar quadra</p>
+      {% if form_quadra.non_field_errors %}<p class="rounded-2xl bg-rose-400/10 p-3 text-sm text-rose-200 ring-1 ring-rose-400/30 ring-inset">{{ form_quadra.non_field_errors|join:" " }}</p>{% endif %}
+      {% include "arena/_campo.html" with campo=form_quadra.nome_ou_numero %}
       <div class="grid grid-cols-2 gap-4">
-        {% include "arena/_manager_campo.html" with campo=form_quadra.tipo_piso %}
-        {% include "arena/_manager_campo.html" with campo=form_quadra.capacidade_padrao %}
+        {% include "arena/_campo.html" with campo=form_quadra.tipo_piso %}
+        {% include "arena/_campo.html" with campo=form_quadra.capacidade_padrao %}
       </div>
       <div class="flex justify-end">
-        <button type="submit" name="adicionar_quadra" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">{% icone "mais" "size-4" %} Adicionar</button>
+        <button type="submit" name="adicionar_quadra" class="botao-vidro">{% icone "mais" "size-4" %} Adicionar</button>
       </div>
     </form>
   </section>

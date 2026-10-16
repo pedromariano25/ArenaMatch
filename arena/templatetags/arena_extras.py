@@ -1,4 +1,8 @@
-"""Filtros e tags de apresentação da vitrine web (Tailwind CSS)."""
+"""Filtros e tags de apresentação do site, do app e do portal (Tailwind CSS).
+
+As classes montadas aqui entram no CSS compilado porque o Tailwind também lê
+este arquivo (veja ``arena/estilos/entrada.css``).
+"""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -7,6 +11,7 @@ from urllib.parse import quote, urlencode
 from django import template
 from django.conf import settings
 from django.forms import BoundField
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateformat import format as formatar_data
 from django.utils.html import format_html
@@ -18,33 +23,8 @@ from ..models import OpenMatch
 
 register = template.Library()
 
-_CLASSES_CAMPO = (
-    "block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm "
-    "placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none "
-    "focus:ring-2 focus:ring-emerald-600/20"
-)
+# --- Tema escuro (app e portal) ---
 
-_CLASSES_NIVEL = {
-    "aberta": "bg-violet-50 text-violet-700 ring-violet-200",
-    "iniciante": "bg-sky-50 text-sky-700 ring-sky-200",
-    "intermediario": "bg-amber-50 text-amber-700 ring-amber-200",
-    "avancado": "bg-rose-50 text-rose-700 ring-rose-200",
-}
-
-_CLASSES_INSCRICAO = {
-    "confirmada": "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    "aguardando_pagamento": "bg-amber-50 text-amber-700 ring-amber-200",
-    "reembolsada": "bg-sky-50 text-sky-700 ring-sky-200",
-    "cancelada": "bg-slate-100 text-slate-600 ring-slate-200",
-    "expirada": "bg-slate-100 text-slate-600 ring-slate-200",
-}
-
-# --- Tema escuro do app (Night Match) ---
-
-_CLASSES_CAMPO_ESCURO = (
-    "block w-full rounded-xl border bg-white/5 px-4 py-3 text-base text-zinc-100 "
-    "placeholder:text-zinc-500 focus:border-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400/30"
-)
 _CLASSES_NIVEL_ESCURO = {
     "aberta": "bg-violet-400/15 text-violet-300 ring-violet-400/30",
     "iniciante": "bg-cyan-400/15 text-cyan-300 ring-cyan-400/30",
@@ -69,14 +49,6 @@ _GRADIENTES_AVATAR = (
     "from-indigo-300 to-violet-500",
     "from-yellow-200 to-lime-400",
 )
-
-# Marca (ponto) que identifica o tipo de piso ao lado do rótulo.
-_COR_PISO = {
-    "sintetico": "bg-emerald-600",
-    "salao": "bg-sky-600",
-    "areia": "bg-amber-500",
-    "campo": "bg-lime-700",
-}
 
 # Ícones no estilo Heroicons (outline, 24x24).
 _ICONES = {
@@ -210,31 +182,46 @@ _ICONES = {
     ),
 }
 
-# Agenda do gestor: bloco (fundo claro + barra de identidade), selo e marca de legenda.
-# As cores de identidade (azul, âmbar, verde) foram validadas para daltonismo; o
-# rótulo de texto sempre acompanha a cor.
+# Agenda do gestor: bloco (fundo translúcido + barra de identidade), selo e marca
+# de legenda. Cada tipo tem cor e rótulo de texto; o horário livre também se
+# distingue pela borda tracejada, então a cor nunca é o único sinal.
 _CLASSES_BLOCO_CELULA = {
-    "mensalista": "border-blue-600 bg-blue-50",
-    "avulso": "border-amber-500 bg-amber-50",
-    "partida": "border-emerald-600 bg-emerald-50",
-    "lotada": "border-emerald-600 bg-emerald-50",
-    "bloqueado": "border-slate-400 bg-slate-100",
+    "mensalista": "border-cyan-400 bg-cyan-400/10",
+    "avulso": "border-amber-400 bg-amber-400/10",
+    "partida": "border-lime-400 bg-lime-400/10",
+    "lotada": "border-lime-400 bg-lime-400/15",
+    "bloqueado": "border-zinc-600 bg-white/5",
 }
 _CLASSES_SELO_CELULA = {
-    "mensalista": "bg-blue-100 text-blue-800",
-    "avulso": "bg-amber-100 text-amber-800",
-    "partida": "bg-emerald-100 text-emerald-800",
-    "lotada": "bg-emerald-100 text-emerald-800",
-    "bloqueado": "bg-slate-200 text-slate-700",
-    "vago": "bg-gray-100 text-gray-800",
+    "mensalista": "bg-cyan-400/15 text-cyan-300 ring-cyan-400/30",
+    "avulso": "bg-amber-400/15 text-amber-300 ring-amber-400/30",
+    "partida": "bg-lime-400/15 text-lime-300 ring-lime-400/30",
+    "lotada": "bg-lime-400 text-zinc-950 ring-lime-400",
+    "bloqueado": "bg-white/10 text-zinc-300 ring-white/15",
+    "vago": "bg-white/5 text-zinc-400 ring-white/10",
 }
 _COR_MARCA_CELULA = {
-    "mensalista": "bg-blue-600",
-    "avulso": "bg-amber-500",
-    "partida": "bg-emerald-600",
-    "lotada": "bg-emerald-600",
-    "bloqueado": "bg-slate-400",
-    "vago": "bg-gray-300",
+    "mensalista": "bg-cyan-400",
+    "avulso": "bg-amber-400",
+    "partida": "bg-lime-400",
+    "lotada": "bg-lime-400",
+    "bloqueado": "bg-zinc-500",
+    "vago": "border border-dashed border-lime-400/70",
+}
+# Menu do portal do gestor: seção (``secao`` da view), rota, rótulo e ícone.
+_MENU_GESTOR = (
+    ("dashboard", "gestor:dashboard", "Início", "painel"),
+    ("agenda", "gestor:agenda", "Agenda", "calendario"),
+    ("check_in", "gestor:check_in", "Check-in", "check"),
+    ("financeiro", "gestor:financeiro", "Financeiro", "dinheiro"),
+    ("configuracoes", "gestor:configuracoes", "Ajustes", "engrenagem"),
+)
+# Nomes dos lançamentos na linguagem do gestor (o razão usa os termos contábeis).
+_ROTULOS_LANCAMENTO = {
+    "venda_vaga": "Vaga vendida",
+    "estorno": "Devolução ao jogador",
+    "ajuste_fechamento": "Centavos do rateio",
+    "repasse": "Transferência para a sua conta",
 }
 
 
@@ -253,6 +240,12 @@ def icone(nome: str, classes: str = "size-5") -> SafeString:
 def brl(valor: Decimal | int | float | None) -> str:
     """Formata como moeda brasileira."""
     return formatar_brl(valor)
+
+
+@register.filter
+def brl_numero(valor: Decimal | int | float | None) -> str:
+    """Valor em reais sem o símbolo (``1.234,56``), para números de destaque com o "R$" à parte."""
+    return formatar_brl(valor).removeprefix("R$").strip()
 
 
 @register.filter
@@ -293,22 +286,6 @@ def link_whatsapp(telefone: str) -> str:
 
 
 @register.filter
-def classes_nivel(nivel: str) -> str:
-    return _CLASSES_NIVEL.get(nivel, _CLASSES_NIVEL["aberta"])
-
-
-@register.filter
-def classes_inscricao(status: str) -> str:
-    return _CLASSES_INSCRICAO.get(status, _CLASSES_INSCRICAO["cancelada"])
-
-
-@register.filter
-def cor_piso(piso: str) -> str:
-    """Cor do ponto que identifica o tipo de piso."""
-    return _COR_PISO.get(piso, _COR_PISO["sintetico"])
-
-
-@register.filter
 def classes_bloco(tipo: str) -> str:
     """Fundo e barra de identidade de uma faixa ocupada da agenda."""
     return _CLASSES_BLOCO_CELULA.get(tipo, _CLASSES_BLOCO_CELULA["bloqueado"])
@@ -326,11 +303,25 @@ def cor_marca(tipo: str) -> str:
     return _COR_MARCA_CELULA.get(tipo, _COR_MARCA_CELULA["vago"])
 
 
+@register.simple_tag
+def menu_gestor() -> list[tuple[str, str, str, str]]:
+    """Itens do menu do portal: ``(secao, url, rotulo, icone)``."""
+    return [(secao, reverse(rota), rotulo, nome_icone) for secao, rota, rotulo, nome_icone in _MENU_GESTOR]
+
+
 @register.filter
-def estilizar(campo: BoundField) -> SafeString:
-    """Renderiza o widget do formulário no estilo do produto (vitrine e portal)."""
-    borda = "border-red-400" if campo.errors else "border-slate-300"
-    return campo.as_widget(attrs={"class": f"{_CLASSES_CAMPO} {borda}"})
+def rotulo_lancamento(lancamento: object) -> str:
+    """Nome de um lançamento da carteira da arena, sem jargão contábil."""
+    return _ROTULOS_LANCAMENTO.get(lancamento.tipo) or lancamento.get_tipo_display()
+
+
+@register.filter
+def rotulo_dia_curto(dia: date) -> str:
+    """``Hoje``, ``Amanhã`` ou o dia da semana abreviado (ex.: ``Sáb``), para abas."""
+    hoje = timezone.localdate()
+    if dia in (hoje, hoje + timedelta(days=1)):
+        return rotulo_dia(dia)
+    return capfirst(formatar_data(dia, "D"))
 
 
 @register.simple_tag
@@ -355,14 +346,13 @@ def link_google_agenda(partida: OpenMatch) -> str:
     return "https://calendar.google.com/calendar/render?" + urlencode(parametros)
 
 
-# --- Tema escuro do app (Night Match) ---
+# --- Tema escuro (app e portal) ---
 
 
 @register.filter
 def estilizar_escuro(campo: BoundField) -> SafeString:
-    """Widget no estilo escuro do app do jogador."""
-    borda = "border-rose-400/60" if campo.errors else "border-white/10"
-    return campo.as_widget(attrs={"class": f"{_CLASSES_CAMPO_ESCURO} {borda}"})
+    """Widget no estilo escuro (componente ``campo`` do CSS), usado no app e no portal."""
+    return campo.as_widget(attrs={"class": "campo campo-erro" if campo.errors else "campo"})
 
 
 @register.filter

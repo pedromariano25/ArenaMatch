@@ -22,7 +22,7 @@
         <a href="#arenas" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Para arenas</a>
         <a href="{% url 'arena:vitrine' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Jogos</a>
       </div>
-      <a href="{% url 'arena:vitrine' %}" class="rounded-full bg-lime-400 px-5 py-2.5 text-sm font-black text-zinc-950 transition hover:bg-lime-300 neon">Abrir o app</a>
+      <a href="{% url 'arena:vitrine' %}" class="botao-neon">Abrir o app</a>
     </nav>
   </header>
 
@@ -36,7 +36,7 @@
       </h1>
       <p class="mt-6 max-w-xl text-lg text-zinc-400">Partidas de futebol perto de você, no seu nível. Escolha, pague pelo app e entre em campo. Sem grupo de WhatsApp, sem cobrar ninguém no balcão.</p>
       <div class="mt-8 flex flex-wrap gap-3">
-        <a href="{% url 'arena:vitrine' %}" class="inline-flex items-center gap-2 rounded-full bg-lime-400 px-6 py-3.5 text-base font-black text-zinc-950 transition hover:bg-lime-300 neon">Achar um jogo {% icone "seta" "size-5" %}</a>
+        <a href="{% url 'arena:vitrine' %}" class="botao-neon px-6 py-3.5 text-base">Achar um jogo {% icone "seta" "size-5" %}</a>
         <a href="#arenas" class="inline-flex items-center gap-2 rounded-full bg-white/5 px-6 py-3.5 text-base font-bold text-white ring-1 ring-inset ring-white/15 transition hover:bg-white/10">Sou dono de arena</a>
       </div>
       <dl class="mt-14 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -123,7 +123,7 @@
               <p class="text-xs font-bold uppercase tracking-widest text-lime-300">Para donos de arena</p>
               <h2 class="titulo mt-2 text-4xl text-white sm:text-5xl">Horário vago vira receita.</h2>
               <p class="mt-4 text-zinc-400">O ArenaManager organiza agenda, mensalistas e financeiro. Com um clique, um horário ocioso vira partida aberta e é vendido vaga a vaga para a comunidade.</p>
-              <a href="{% url 'gestor:login' %}" class="mt-8 inline-flex items-center gap-2 rounded-full bg-lime-400 px-6 py-3.5 text-base font-black text-zinc-950 transition hover:bg-lime-300 neon">Acessar o ArenaManager {% icone "seta" "size-5" %}</a>
+              <a href="{% url 'gestor:login' %}" class="botao-neon mt-8 px-6 py-3.5 text-base">Acessar o ArenaManager {% icone "seta" "size-5" %}</a>
             </div>
             <ul class="grid gap-3 sm:grid-cols-2">
               <li class="rounded-2xl bg-white/5 p-5 ring-1 ring-inset ring-white/10"><p class="font-bold text-white">Pagamento antecipado</p><p class="mt-1 text-sm text-zinc-400">O jogador paga no app. Nada de cobrar no balcão nem de calote.</p></li>
@@ -138,7 +138,7 @@
 
     <section class="mx-auto max-w-6xl px-4 pb-24 text-center sm:px-6">
       <h2 class="titulo text-4xl text-white sm:text-6xl">Bora jogar?</h2>
-      <a href="{% url 'arena:vitrine' %}" class="mt-8 inline-flex items-center gap-2 rounded-full bg-lime-400 px-8 py-4 text-lg font-black text-zinc-950 transition hover:bg-lime-300 neon">Ver jogos perto de mim {% icone "seta" "size-5" %}</a>
+      <a href="{% url 'arena:vitrine' %}" class="botao-neon mt-8 px-8 py-4 text-lg">Ver jogos perto de mim {% icone "seta" "size-5" %}</a>
     </section>
   </main>
 

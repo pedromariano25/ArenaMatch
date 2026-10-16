@@ -3,6 +3,11 @@
 Uso: ``python manage.py populate_db``. ATENÇÃO: apaga TODOS os dados antes. Só roda
 com ``DEBUG=True`` (ou ``--force``), porque cria contas com senhas fracas e conhecidas.
 
+Em um servidor público (deploy de demonstração no Render), use
+``populate_db --se-vazio`` com ``ARENAMATCH_SENHA_DEMO`` definida: o comando só
+popula um banco vazio e todas as contas de demonstração usam essa senha, porque
+as senhas padrão estão no código, que é público.
+
 Tudo passa pelas mesmas regras e serviços do sistema: agenda sem conflitos,
 checkout com o gateway simulado, cancelamentos com crédito, mínimo de jogadores,
 encerramento das partidas e repasses. Para gerar um histórico verdadeiro (jogos
@@ -10,6 +15,7 @@ finalizados, saldo liberado e repasses), os últimos dias são simulados com um
 relógio controlado que avança e roda as rotinas como o agendador faria.
 """
 
+import os
 import random
 from collections import defaultdict
 from collections.abc import Iterator
@@ -72,11 +78,14 @@ SENHA_ADMIN = "admin123"
 SENHA_GESTOR = "gestor123"
 SENHA_JOGADOR = "jogador123"
 TELEFONE_DEMO = "(11) 90000-0001"
+# Senha única das contas de demonstração em servidores públicos (veja o docstring).
+VARIAVEL_SENHA_DEMO = "ARENAMATCH_SENHA_DEMO"
+TAMANHO_MINIMO_SENHA_DEMO = 12
 NOME_GRUPO_GESTORES = "Gestores"
 
 DIAS_DE_AGENDA = 7
 DIAS_DE_HISTORICO = 6
-PARTIDAS_POR_ARENA = 6
+PARTIDAS_POR_ARENA = 8
 PARTIDAS_PASSADAS_POR_DIA = 2
 PARTIDAS_LOTADAS = 3
 FAIXAS_DIA_UTIL = ((18, 19), (19, 20), (20, 21), (21, 22), (22, 23))
@@ -258,6 +267,11 @@ class Command(BaseCommand):
             help="Permite rodar com DEBUG=False. Nunca use em produção.",
         )
         parser.add_argument(
+            "--se-vazio",
+            action="store_true",
+            help="Só popula se o banco não tiver nenhuma arena (não apaga nada). Para deploys.",
+        )
+        parser.add_argument(
             "--seed", type=int, default=2026, help="Semente aleatória (dados reproduzíveis)."
         )
         parser.add_argument(
@@ -268,11 +282,27 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
+        senha_demo = os.environ.get(VARIAVEL_SENHA_DEMO, "").strip()
         if not settings.DEBUG and not options["force"]:
-            raise CommandError(
-                "populate_db apaga todos os dados e cria senhas de teste. "
-                "Rode apenas com DEBUG=True (ou --force, nunca em produção)."
-            )
+            if not options["se_vazio"]:
+                raise CommandError(
+                    "populate_db apaga todos os dados e cria senhas de teste. "
+                    "Rode apenas com DEBUG=True (ou --force, nunca em produção). "
+                    "Para popular um servidor novo, use --se-vazio."
+                )
+            if len(senha_demo) < TAMANHO_MINIMO_SENHA_DEMO:
+                raise CommandError(
+                    f"Defina {VARIAVEL_SENHA_DEMO} com ao menos {TAMANHO_MINIMO_SENHA_DEMO} caracteres: "
+                    "as senhas padrão da demonstração são públicas."
+                )
+        if options["se_vazio"] and Arena.objects.exists():
+            self.stdout.write("O banco já tem dados; nada foi alterado (--se-vazio).")
+            return
+        self.senhas = (
+            dict.fromkeys(("admin", "gestor", "jogador"), senha_demo)
+            if senha_demo
+            else {"admin": SENHA_ADMIN, "gestor": SENHA_GESTOR, "jogador": SENHA_JOGADOR}
+        )
         self.rng = random.Random(options["seed"])
         self.cpfs: set[str] = set()
         self.relogio = Relogio()
@@ -331,7 +361,7 @@ class Command(BaseCommand):
         return CustomUser.objects.create_superuser(
             "admin",
             "admin@example.com",
-            SENHA_ADMIN,
+            self.senhas["admin"],
             first_name="Admin",
             last_name="ArenaMatch",
             is_player=True,
@@ -343,12 +373,12 @@ class Command(BaseCommand):
                 f"{slugify(nome).replace('-', '')}.{slugify(sobrenome)}",
                 nome,
                 sobrenome,
-                SENHA_JOGADOR,
+                self.senhas["jogador"],
                 is_player=True,
             )
             for nome, sobrenome in JOGADORES
         ]
-        demo = self._criar_usuario("jogador", "Jogador", "Demo", SENHA_JOGADOR, is_player=True)
+        demo = self._criar_usuario("jogador", "Jogador", "Demo", self.senhas["jogador"], is_player=True)
         # Celular fixo para testar o login por código (o código aparece na tela em DEBUG).
         demo.telefone = TELEFONE_DEMO
         demo.save(update_fields=["telefone"])
@@ -411,7 +441,7 @@ class Command(BaseCommand):
         for dados in ARENAS:
             login, nome, sobrenome = dados["gestor"]
             gestor = self._criar_usuario(
-                login, nome, sobrenome, SENHA_GESTOR, is_manager=True, is_staff=True
+                login, nome, sobrenome, self.senhas["gestor"], is_manager=True, is_staff=True
             )
             gestor.groups.add(grupo)
             arena = Arena.objects.create(
@@ -685,16 +715,18 @@ class Command(BaseCommand):
             self.stdout.write(f"  {rotulo:<22}{total:>5}")
 
         self.stdout.write(self.style.MIGRATE_HEADING("\nAcessos de teste (login / senha)"))
+        demo_publica = self.senhas["admin"] != SENHA_ADMIN
+        senhas = dict.fromkeys(self.senhas, f"(a de {VARIAVEL_SENHA_DEMO})") if demo_publica else self.senhas
         acessos = [
-            ("Superusuário", "admin", SENHA_ADMIN),
-            *[(f"Gestor - {a['nome']}", a["gestor"][0], SENHA_GESTOR) for a in ARENAS],
-            ("Jogador de demonstração", "jogador", SENHA_JOGADOR),
-            ("Jogador demo pelo celular", TELEFONE_DEMO, "código exibido na tela"),
-            ("Outros jogadores", "lucas.oliveira (etc.)", SENHA_JOGADOR),
+            ("Superusuário", "admin", senhas["admin"]),
+            *[(f"Gestor - {a['nome']}", a["gestor"][0], senhas["gestor"]) for a in ARENAS],
+            ("Jogador de demonstração", "jogador", senhas["jogador"]),
+            ("Jogador demo pelo celular", TELEFONE_DEMO, "código exibido na tela (só com DEBUG)"),
+            ("Outros jogadores", "lucas.oliveira (etc.)", senhas["jogador"]),
         ]
         for papel, login, senha in acessos:
             self.stdout.write(f"  {papel:<42}{login:<24}{senha}")
+        base = settings.ARENAMATCH_URL_BASE.rstrip("/")
         self.stdout.write(
-            "\n  Site: http://127.0.0.1:8000/  |  App: http://127.0.0.1:8000/app/"
-            "  |  Portal: http://127.0.0.1:8000/manager/  |  Admin: http://127.0.0.1:8000/admin/\n"
+            f"\n  Site: {base}/  |  App: {base}/app/  |  Portal: {base}/manager/  |  Admin: {base}/admin/\n"
         )

@@ -758,18 +758,28 @@ class GestorRequiredMixin(LoginRequiredMixin):
 
 
 class GestorDashboardView(GestorRequiredMixin, TemplateView):
-    """Visão financeira e operacional da arena."""
+    """Painel: três números (saldo, vagas vendidas, horários ociosos) e a agenda do dia.
+
+    Na agenda, um toque num horário ocioso publica a partida com os valores
+    sugeridos; ``?dia=AAAA-MM-DD`` escolhe um dos próximos 7 dias.
+    """
 
     template_name = "arena/manager_dashboard.html"
     secao = "dashboard"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         contexto = super().get_context_data(**kwargs)
+        dias, grades = gestao.semana_da_arena(self.arena)
+        try:
+            indice = dias.index(parse_date(self.request.GET.get("dia") or "") or dias[0])
+        except ValueError:
+            indice = 0
         contexto.update(
-            indicadores=gestao.indicadores_dashboard(self.arena),
-            proximas=gestao.proximas_partidas(self.arena),
-            agenda_hoje=gestao.agenda_de_hoje(self.arena),
-            hoje=timezone.localdate(),
+            indicadores=gestao.indicadores_dashboard(self.arena, grades),
+            dias=gestao.dias_do_painel(dias, grades),
+            dia=dias[indice],
+            quadras_do_dia=gestao.agenda_do_dia(grades, indice),
+            hoje=dias[0],
         )
         return contexto
 
@@ -805,7 +815,7 @@ class GestorAgendaView(GestorRequiredMixin, TemplateView):
                 (tipo.MENSALISTA, "Mensalista", contagem[tipo.MENSALISTA]),
                 (tipo.AVULSO, "Avulso", contagem[tipo.AVULSO]),
                 (tipo.PARTIDA, "Partida aberta", contagem[tipo.PARTIDA] + contagem[tipo.LOTADA]),
-                (tipo.VAGO, "Vago", contagem[tipo.VAGO]),
+                (tipo.VAGO, "Livre", contagem[tipo.VAGO]),
                 (tipo.BLOQUEADO, "Bloqueado", contagem[tipo.BLOQUEADO]),
             ],
             semana_anterior=inicio - timedelta(days=7),
@@ -863,7 +873,9 @@ class GestorCancelarPartidaView(GestorRequiredMixin, View):
         else:
             messages.success(
                 request,
-                f"Partida cancelada. {reembolsados} jogador(es) reembolsado(s) automaticamente.",
+                f"Partida cancelada. {reembolsados} jogador(es) reembolsado(s) automaticamente."
+                if reembolsados
+                else "Partida cancelada. Ninguém tinha comprado vaga, então não houve reembolso.",
             )
         return redirect(_destino_seguro(request, request.POST.get("voltar"), reverse("gestor:dashboard")))
 
@@ -948,9 +960,9 @@ class GestorFinanceiroView(GestorRequiredMixin, TemplateView):
     tipos = (
         ("", "Tudo"),
         (TipoLancamento.VENDA_VAGA, "Vendas"),
-        (TipoLancamento.ESTORNO, "Estornos"),
-        (TipoLancamento.REPASSE, "Repasses"),
-        (TipoLancamento.AJUSTE_FECHAMENTO, "Ajustes"),
+        (TipoLancamento.ESTORNO, "Devoluções"),
+        (TipoLancamento.REPASSE, "Transferências"),
+        (TipoLancamento.AJUSTE_FECHAMENTO, "Centavos"),
     )
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:

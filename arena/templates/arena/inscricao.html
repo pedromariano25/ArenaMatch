@@ -61,7 +61,7 @@
 
     {% if inscricao.status == "aguardando_pagamento" and not inscricao.reserva_vencida %}
       <div class="border-t border-white/5 p-6">
-        <a href="{% url 'arena:pagamento' inscricao.pk %}" class="flex w-full items-center justify-center gap-2 rounded-full bg-lime-400 px-5 py-3.5 text-sm font-black text-zinc-950 neon">Concluir pagamento {% icone "seta" "size-4" %}</a>
+        <a href="{% url 'arena:pagamento' inscricao.pk %}" class="botao-neon flex w-full py-3.5">Concluir pagamento {% icone "seta" "size-4" %}</a>
       </div>
     {% elif inscricao.status == "confirmada" %}
       {% if not inscricao.em_repasse %}
@@ -71,7 +71,7 @@
         </div>
       {% endif %}
       <div class="flex flex-col gap-3 border-t border-white/5 p-6 sm:flex-row">
-        <a href="{% link_google_agenda partida %}" target="_blank" rel="noopener" class="flex flex-1 items-center justify-center gap-2 rounded-full bg-lime-400 px-4 py-3 text-sm font-black text-zinc-950 neon">{% icone "calendario" "size-4" %} Adicionar à agenda</a>
+        <a href="{% link_google_agenda partida %}" target="_blank" rel="noopener" class="botao-neon flex flex-1 px-4 py-3">{% icone "calendario" "size-4" %} Adicionar à agenda</a>
         <a href="{{ arena.endereco_completo|link_maps }}" target="_blank" rel="noopener" class="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/5 px-4 py-3 text-sm font-bold text-zinc-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/10">{% icone "pin" "size-4 text-cyan-300" %} Como chegar</a>
       </div>
     {% endif %}

@@ -7,7 +7,7 @@
 > O Django Admin virou back-office interno. Os acessos e endereços atuais estão no README.
 >
 > **14/10/2026:** pagamento in-app, perfis e níveis, site em `/` e app em `/app/`.
-> Veja o [Relatório da madrugada](RELATORIO_MADRUGADA.md).
+> Veja o [Relatório da madrugada de 14/10](docs/RELATORIO_2026-10-14.md).
 
 ## Resumo
 

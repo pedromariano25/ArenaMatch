@@ -1,5 +1,9 @@
-{% load arena_extras %}
-<a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition {% if secao == chave %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50 hover:text-slate-900{% endif %}">
-  {% if secao == chave %}{% icone nome_icone "size-5 shrink-0 text-emerald-600" %}{% else %}{% icone nome_icone "size-5 shrink-0 text-slate-400" %}{% endif %}
-  {{ rotulo }}
-</a>
+{% load arena_extras %}{% comment %}Itens do menu do portal: estilo="lateral" (desktop) ou "inferior" (celular).{% endcomment %}
+{% menu_gestor as itens %}
+{% for chave, url, rotulo, nome_icone in itens %}
+  {% if estilo == "inferior" %}
+    <a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex flex-col items-center gap-1 py-2.5 transition {% if secao == chave %}text-lime-400{% else %}text-zinc-400 hover:text-white{% endif %}">{% icone nome_icone "size-6" %} {{ rotulo }}</a>
+  {% else %}
+    <a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition {% if secao == chave %}bg-lime-400/10 text-lime-300 ring-1 ring-lime-400/20 ring-inset{% else %}text-zinc-400 hover:bg-white/5 hover:text-white{% endif %}">{% icone nome_icone "size-5 shrink-0" %} {{ rotulo }}</a>
+  {% endif %}
+{% endfor %}

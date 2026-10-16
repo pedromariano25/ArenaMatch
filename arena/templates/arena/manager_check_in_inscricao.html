@@ -6,25 +6,25 @@
 {% block content %}
 {% with partida=inscricao.open_match jogador=inscricao.player %}
 <div class="mx-auto max-w-md">
-  <a href="{% url 'gestor:check_in' %}" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900">{% icone "voltar" "size-4" %} Check-in de hoje</a>
-  <div class="mt-6 rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-    <span class="mx-auto grid size-16 place-items-center rounded-full bg-slate-100 text-xl font-semibold text-slate-700">{{ jogador.iniciais }}</span>
-    <h1 class="mt-3 text-xl font-semibold text-slate-900">{{ jogador.get_full_name }}</h1>
-    <p class="text-sm text-slate-500">{{ inscricao.get_posicao_display }}{% if jogador.perfil %} · nível {{ jogador.perfil.nivel }}{% endif %}</p>
-    <p class="mt-4 text-sm text-slate-700">{{ partida.time_slot.data|date:"d/m" }} · {{ partida.time_slot.intervalo }} · {{ partida.time_slot.court.nome_ou_numero }}</p>
+  <a href="{% url 'gestor:check_in' %}" class="inline-flex items-center gap-1.5 text-sm font-bold text-zinc-400 transition hover:text-white">{% icone "voltar" "size-4" %} Check-in de hoje</a>
+  <div class="vidro mt-6 rounded-3xl p-6 text-center sm:p-8">
+    <div class="flex justify-center">{% include "arena/_avatar.html" with usuario=jogador tamanho="size-20" texto="text-2xl" %}</div>
+    <h1 class="titulo mt-4 text-2xl text-white">{{ jogador.get_full_name }}</h1>
+    <p class="mt-1 text-sm text-zinc-400">{{ inscricao.get_posicao_display }}{% if jogador.perfil %}, nível {{ jogador.perfil.nivel }}{% endif %}</p>
+    <p class="mt-4 text-sm font-semibold text-zinc-200">{{ partida.time_slot.data|date:"d/m" }}, {{ partida.time_slot.intervalo }}, {{ partida.time_slot.court.nome_ou_numero }}</p>
 
     <div class="mt-6">
       {% if inscricao.check_in_em %}
-        <p class="rounded-lg bg-emerald-50 p-4 text-sm font-medium text-emerald-800">Check-in feito às {{ inscricao.check_in_em|time:"H:i" }}.</p>
+        <p class="rounded-2xl bg-lime-400/10 p-4 text-sm font-bold text-lime-300 ring-1 ring-lime-400/30 ring-inset">Check-in feito às {{ inscricao.check_in_em|time:"H:i" }}.</p>
       {% elif inscricao.status != "confirmada" %}
-        <p class="rounded-lg bg-red-50 p-4 text-sm font-medium text-red-800">Esta inscrição não está confirmada ({{ inscricao.get_status_display|lower }}).</p>
+        <p class="rounded-2xl bg-rose-400/10 p-4 text-sm font-bold text-rose-200 ring-1 ring-rose-400/30 ring-inset">Esta inscrição não está confirmada ({{ inscricao.get_status_display|lower }}).</p>
       {% elif pode_fazer_check_in %}
         <form method="post">
           {% csrf_token %}
-          <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">Confirmar presença</button>
+          <button type="submit" class="botao-neon w-full py-4 text-base">Confirmar presença</button>
         </form>
       {% else %}
-        <p class="rounded-lg bg-amber-50 p-4 text-sm text-amber-900">O check-in abre 1h antes do jogo e vai até o fim dele.</p>
+        <p class="rounded-2xl bg-amber-400/10 p-4 text-sm text-amber-200 ring-1 ring-amber-400/30 ring-inset">O check-in abre 1h antes do jogo e vai até o fim dele.</p>
       {% endif %}
     </div>
   </div>

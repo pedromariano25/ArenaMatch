@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -39,11 +40,26 @@ if not SECRET_KEY:
 # Desligado por padrão: só é ativado com DJANGO_DEBUG=True explícito.
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False').strip().lower() in ('1', 'true', 'yes')
 
+# Hosts aceitos, separados por vírgula. Sem a variável, aceita qualquer host ('*'),
+# o que permite subir no Render sem saber o domínio de antemão. Depois do primeiro
+# deploy, prefira restringir (ex.: arenamatch.onrender.com,arenamatch.com.br).
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',')
+    for host in os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
     if host.strip()
 ]
+
+# No Render, o endereço público do serviço vem pronto nestas variáveis.
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
+if RENDER_EXTERNAL_HOSTNAME and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+CSRF_TRUSTED_ORIGINS = [
+    origem.strip()
+    for origem in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origem.strip()
+]
+if RENDER_EXTERNAL_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
 
 
 def _variavel_booleana(nome: str, padrao: bool) -> bool:
@@ -63,7 +79,9 @@ ARENAMATCH_PERMITIR_GATEWAY_SIMULADO = _variavel_booleana('ARENAMATCH_PERMITIR_G
 ARENAMATCH_SMS_BACKEND = os.environ.get('ARENAMATCH_SMS_BACKEND', 'arena.acesso.SmsConsole')
 
 # Endereço público do site, usado nos links dos e-mails.
-ARENAMATCH_URL_BASE = os.environ.get('ARENAMATCH_URL_BASE', 'http://127.0.0.1:8000')
+ARENAMATCH_URL_BASE = (
+    os.environ.get('ARENAMATCH_URL_BASE') or os.environ.get('RENDER_EXTERNAL_URL') or 'http://127.0.0.1:8000'
+)
 
 # E-mails: no console por padrão (desenvolvimento). Em produção, configure o SMTP.
 EMAIL_BACKEND = os.environ.get(
@@ -88,6 +106,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Serve o CSS e os demais arquivos estáticos direto pelo Django (sem Nginx).
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -194,6 +214,49 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+# Destino do collectstatic, servido pelo WhiteNoise em produção.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Os testes renderizam templates sem rodar o collectstatic antes.
+RODANDO_TESTES = sys.argv[1:2] == ['test']
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    # Em produção: nomes com hash (cache longo no navegador) e versões comprimidas.
+    # Em desenvolvimento e nos testes, o armazenamento simples dispensa o collectstatic.
+    'staticfiles': {
+        'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'
+        if DEBUG or RODANDO_TESTES
+        else 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
+
+# Segurança em produção (atrás do proxy HTTPS do Render)
+# https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
+
+if not DEBUG:
+    # O Render termina o HTTPS e avisa o Django por este cabeçalho.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'same-origin'
+    # HSTS começa curto (1 hora); aumente quando o domínio definitivo estiver no ar.
+    SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_SECURE_HSTS_SECONDS', '3600'))
+
+# Erros e avisos vão para o console, que é o log do Render (o padrão do Django
+# só mostra no console com DEBUG=True).
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'root': {'handlers': ['console'], 'level': 'WARNING'},
+    'loggers': {
+        'django': {'handlers': ['console'], 'level': os.environ.get('DJANGO_LOG_LEVEL', 'INFO'), 'propagate': False},
+        # Respostas 4xx (página inexistente, acesso negado) são rotina; erros 500 saem com o traceback.
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

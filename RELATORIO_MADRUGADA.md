@@ -1,269 +1,261 @@
 # Relatório da madrugada · ArenaMatch
 
-**Data:** 14/10/2026, das 00h20 às 07h · **Modo:** operação autônoma (Night Shift), Fases −1 a 3
+**Data:** madrugada de 16/10/2026 · **Modo:** operação autônoma (Night Shift)
 
 ## Resumo
 
-Todas as fases do roadmap foram executadas, testadas e publicadas no GitHub
-(<https://github.com/pedromariano25/ArenaMatch>):
+O roteiro desta noite repetia as Fases −1 a 3, que **já tinham sido feitas na
+madrugada de 14/10** (relatório arquivado em
+[`docs/RELATORIO_2026-10-14.md`](docs/RELATORIO_2026-10-14.md)): PostgreSQL,
+agendador, checkout in-app com reserva de 10 minutos, MockGateway, níveis,
+goleiro, site em `/` e app em `/app/`. Não refiz o que já estava pronto e testado.
+Conferi e trabalhei no que era novo:
 
-- **Fase −1 · Base:** commit inicial e repositório público criado com o GitHub CLI.
-- **Fase 0 · Infraestrutura:** PostgreSQL 18 no lugar do SQLite e um agendador de rotinas automáticas.
-- **Fase 1 · Dinheiro:** pagamento 100% no app (Pix, cartão ou crédito) com razão contábil, reserva de 10 minutos, cancelamento com crédito, repasse de vaga, mínimo de jogadores e repasse às arenas. O gateway é **simulado**: nenhum dinheiro real se move.
-- **Fase 2 · Jogadores:** perfil com nível de 1 a 5, trava de nível nas partidas, vaga grátis de goleiro, check-in por QR, confiabilidade, avaliação pós-jogo e sugestão de times.
-- **Fase 3 · Produto:** site em `/`, app do jogador em `/app/` com tema escuro, feed com os rostos de quem vai, checkout rápido, login pelo celular e filtro "perto de mim".
-- **Dados de demonstração:** 3 arenas, 54 partidas (35 já jogadas), 585 inscrições, 477 pagamentos, 1.601 lançamentos contábeis e 45 usuários, com 6 dias de histórico.
-- **Qualidade:** 157 testes automatizados passando, conferência do razão sem divergências e revisão visual no celular e no desktop.
+- **Portal da arena (`/manager/`) no visual escuro e neon do app.** O Início foi
+  simplificado: 3 cards grandes e a agenda do dia, em que **um toque num horário
+  livre publica a partida**. Os termos técnicos sumiram ("razão", "estorno",
+  "repasse", "em pagamento").
+- **Tailwind fora do CDN.** O CSS agora é compilado (58 KB, ou 10 KB comprimido),
+  e os botões repetidos viraram componentes.
+- **Fase 4 · Deploy no Render:** `render.yaml`, `build.sh`, `start.sh`, gunicorn,
+  WhiteNoise e configurações de segurança. O deploy foi simulado do zero aqui:
+  banco vazio, build e população automática.
+- **Dados de demonstração:** 3 arenas, 8 quadras, 60 partidas (**20 abertas** no
+  futuro, 3 lotadas, 35 já jogadas) e 45 usuários.
+- **Qualidade:** 169 testes passando (eram 157), revisão visual em 390 px, 1024 px e 1280 px.
+
+**Amanhã:** o deploy é **New > Blueprint** no Render, escolhendo o repositório.
+O passo a passo está mais abaixo.
 
 ---
 
 ## Como começar
 
-O **servidor** e o **agendador** ficaram rodando em segundo plano. É só abrir:
+O **servidor** (agora recarrega sozinho quando o código muda) e o **agendador**
+ficaram rodando em segundo plano:
 
 | Endereço | O que é |
 | --- | --- |
 | <http://127.0.0.1:8000/> | Site de apresentação |
 | <http://127.0.0.1:8000/app/> | App do jogador |
-| <http://127.0.0.1:8000/manager/> | Portal do Gestor (ArenaManager) |
+| <http://127.0.0.1:8000/manager/> | Portal da arena (redesenhado) |
 | <http://127.0.0.1:8000/admin/> | Back-office da plataforma |
-| <http://127.0.0.1:8000/api/> | API REST navegável |
 
 | Perfil | Onde entrar | Login | Senha |
 | --- | --- | --- | --- |
-| Jogador demo, pelo celular | `/app/entrar/` | `(11) 90000-0001` | o código aparece na tela |
-| Jogador demo, com senha | `/app/entrar/senha/` | `jogador` | `jogador123` |
-| Demais jogadores (ex.: `lucas.oliveira`) | `/app/entrar/senha/` | — | `jogador123` |
 | Gestor da Arena Gol de Placa | `/manager/` | `carlos.andrade` | `gestor123` |
 | Gestora do Complexo Esportivo Tabelinha | `/manager/` | `fernanda.lima` | `gestor123` |
 | Gestor da Arena Pé na Areia | `/manager/` | `rafael.souza` | `gestor123` |
+| Jogador demo, pelo celular | `/app/entrar/` | `(11) 90000-0001` | o código aparece na tela |
+| Jogador demo, com senha | `/app/entrar/senha/` | `jogador` | `jogador123` |
 | Superusuário | qualquer um | `admin` | `admin123` |
 
-As senhas do PostgreSQL (usuário `postgres` e usuário `arenamatch`) estão só no
-seu `.env`, que não vai para o GitHub.
+> Essas senhas valem **só no seu computador**. No Render, todas as contas usam
+> uma senha gerada pelo próprio Render (veja o deploy abaixo).
 
-### Roteiro sugerido (15 minutos)
+### Roteiro sugerido (5 minutos)
 
-1. **Site:** abra `/` e clique em **"Achar um jogo"**.
-2. **Feed sem login:** use os filtros de um toque (dia, piso) e **"Perto de mim"**. O navegador pede permissão de localização e os jogos passam a vir ordenados por distância.
-3. **Login pelo celular:** em **Entrar**, digite `(11) 90000-0001`. Em modo de demonstração o código aparece na própria tela (e no log do servidor). Você entra como o Jogador Demo.
-4. **Garantir vaga:** no feed, toque em **"Garantir vaga"**. O checkout rápido abre por cima da lista:
-   - **Cartão:** aprovado na hora, você vai direto para o comprovante.
-   - **Pix:** aparece um "copia e cola" de mentira; clique em **"Simular pagamento aprovado"**.
-5. **Comprovante:** tem o QR de check-in, "Adicionar à agenda" e "Como chegar".
-6. **Minhas partidas:** o demo tem R$ 22,64 de crédito (de um cancelamento) e 2 jogos para **avaliar**. Avalie um: nível da partida e elogios aos colegas.
-7. **Perfil:** nível, jogos, confiabilidade, crédito e elogios recebidos.
-8. **Portal como `carlos.andrade`:**
-   - **Financeiro:** valores a liberar, disponíveis, extrato e repasses.
-   - **Check-in:** a lista de presença dos jogos de hoje, com os times sugeridos. O QR do comprovante, lido com a câmera do celular, abre direto a ficha do jogador.
-   - **Agenda:** "Transformar em partida aberta", agora com vagas de goleiro e prévia do preço.
-   - **Configurações:** mínimo de jogadores, prazo e localização da arena.
+1. Entre em `/manager/` como `carlos.andrade`.
+2. **Início:** veja os 3 números e, na agenda, escolha um dia nas abas.
+3. Toque em **Publicar** num horário livre. A partida entra à venda na hora,
+   e o horário passa a mostrar "À venda 0/14" com o botão **Desfazer**.
+4. Abra `/app/` em outra aba: a partida já está no feed.
+5. **Agenda:** a semana completa, com o formulário detalhado (aluguel, vagas,
+   goleiros e nível) e o **Cancelar partida** com reembolso automático.
 
-### Comandos úteis
+---
 
-```powershell
-.\venv\Scripts\python.exe manage.py populate_db   # APAGA tudo e recria a demonstração (~50 s)
-.\venv\Scripts\python.exe manage.py test arena    # 157 testes (~1 min)
-.\venv\Scripts\python.exe manage.py agendador     # rotinas automáticas (deixe 1 rodando)
-```
+## Deploy no Render (amanhã)
 
-> **Sobre os processos em segundo plano:** o servidor foi iniciado com
-> `--noreload`, então **não recarrega quando o código muda**. Para trabalhar no
-> código, encerre os dois e suba de novo no terminal:
->
-> ```powershell
-> Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "manage.py (runserver|agendador)" } | ForEach-Object { Stop-Process -Id $_.ProcessId }
-> .\venv\Scripts\python.exe manage.py runserver
-> ```
->
-> O log do agendador está em `agendador.log` (ignorado pelo Git).
+Tudo está no repositório. Não precisa de linha de comando nem de login pelo terminal.
+
+1. Entre em <https://dashboard.render.com/> (pode ser com a conta do GitHub).
+2. Clique em **New > Blueprint**.
+3. Conecte o GitHub e escolha o repositório **ArenaMatch** (branch `main`).
+4. O Render lê o `render.yaml` e mostra o que vai criar:
+   - `arenamatch-db` (PostgreSQL, gratuito);
+   - `arenamatch` (serviço web, gratuito).
+
+   Clique em **Apply**.
+5. O primeiro build leva alguns minutos (aqui, o ensaio levou 1 minuto; o plano
+   gratuito é mais lento): instala tudo, compila o CSS, cria as tabelas e
+   **popula a demonstração** (só porque o banco está vazio).
+6. Quando aparecer **Live**, o endereço fica no topo da página do serviço
+   (algo como `https://arenamatch.onrender.com`).
+7. **Senha das contas de demonstração:** em **arenamatch > Environment**, copie o
+   valor de `ARENAMATCH_SENHA_DEMO`. Ela vale para `admin`, para os 3 gestores e
+   para os jogadores.
+
+Para atualizar depois: cada `git push` na `main` gera um deploy novo, e o banco
+**não** é apagado nem repopulado.
+
+### Limites do plano gratuito
+
+| Limite | Efeito |
+| --- | --- |
+| O site "dorme" após 15 min sem acesso | O primeiro acesso depois disso leva cerca de 1 minuto. Bom para mostrar a um piloto; ruim para uso real |
+| O PostgreSQL gratuito expira em 30 dias | Antes disso, mude o banco para um plano pago no painel do Render |
+| Não há *background worker* | O agendador roda junto do site (`start.sh`). Enquanto o site dorme, as rotinas param, e elas rodam todas assim que o site acorda |
 
 ---
 
 ## O que foi feito, fase a fase
 
-### Fase −1 · Base e GitHub
+### Fase −1 · Backup
 
-- Commit `feat: base do motor financeiro e estruturacao inicial`.
-- GitHub CLI instalado (winget). Você autorizou o login pelo navegador.
-- Repositório criado e enviado com `gh repo create ArenaMatch --public --source=. --remote=origin --push`.
+A árvore de trabalho já estava limpa e sincronizada com o GitHub (último commit:
+`797f480`). Não havia o que salvar; o commit de backup pedido ficaria vazio.
 
-### Fase 0 · Infraestrutura
+### Fase 0 · Infraestrutura (já existia)
 
-- **PostgreSQL 18.6** instalado como serviço do Windows (`postgresql-x64-18`, porta 5432), com o usuário `arenamatch` (com permissão para criar o banco de testes) e o banco `arenamatch` em UTF-8.
-- **Configuração por `DATABASE_URL`** (`dj-database-url`), com conexões persistentes e verificação de saúde. Sem a variável, ou com outro banco que não o PostgreSQL, o projeto se recusa a subir.
-- **Agendador** (`python manage.py agendador`, APScheduler) num processo separado do site. As rotinas ficam em `arena/rotinas.py`:
+PostgreSQL 18 via `DATABASE_URL` e agendador com APScheduler, feitos em 14/10 e
+conferidos agora: o agendador rodou todas as rotinas sem erro.
 
-  | Rotina | Intervalo | O que faz |
-  | --- | --- | --- |
-  | `expirar_reservas` | 1 min | Devolve à partida as vagas reservadas e não pagas em 10 min |
-  | `conferir_quorum` | 5 min | No prazo, cancela e reembolsa partidas sem o mínimo de jogadores |
-  | `finalizar_partidas` | 15 min | Encerra partidas, registra faltas e fecha as contas |
-  | `gerar_repasses` | 60 min | Transfere às arenas o saldo já liberado |
-  | `limpar_sessoes_expiradas` | 1 dia | Apaga logins expirados |
+### Fase 1 · Motor financeiro e portal B2B
 
-  Todas são idempotentes: rodar atrasado ou duas vezes não duplica dinheiro.
+O motor (taxa, reserva de 10 min, MockGateway) já existia. O que mudou foi o **portal**:
 
-### Fase 1 · Pagamento in-app e razão contábil
+- **Início com 3 cards grandes:**
 
-- **Checkout:** ao clicar em "Garantir vaga", a vaga fica reservada por 10 minutos e o pagamento é criado. O cartão é aprovado na hora, o Pix espera a confirmação, o goleiro entra de graça e o crédito é descontado na hora.
-- **Preço:** parte da quadra (aluguel ÷ vagas de linha) + taxa de 15% sobre ela, com mínimo de R$ 2,00. O cartão custa 5% a mais. Os valores ficam **congelados na inscrição**, e o preço da partida trava assim que alguém se inscreve.
-- **Contrato por arena:** taxa, taxa mínima, mínimo de jogadores e prazo ficam na arena. Cada partida guarda uma cópia do contrato vigente quando foi aberta.
-- **Razão contábil:** cada centavo vira um lançamento **imutável** (não dá para editar nem apagar, nem pelo admin). Há três tipos de carteira (arena, plataforma e crédito do jogador), e os repasses ficam registrados à parte. O saldo é sempre a soma dos lançamentos.
-- **Cancelamento pelo jogador:** até 24h antes, crédito integral. Depois disso, o jogador pode **repassar a vaga** para a lista de espera; se alguém assumir, ele recebe crédito.
-- **Mínimo de jogadores:** sem o mínimo no prazo, a partida é cancelada. Pix e cartão são estornados pelo meio original, e quem pagou com crédito recebe crédito de volta.
-- **Pagamento atrasado:** se o Pix chega depois de a reserva expirar, o sistema confirma se ainda houver vaga e estorna automaticamente se não houver.
-- **Liberação e repasse:** a parte da arena fica "a liberar" até 24h depois do fim do jogo, vira "disponível" e é repassada pela rotina horária.
-- **Gateway:** interface `Gateway` em `arena/pagamentos.py`, com o `MockGateway` para desenvolvimento e um webhook em `/pagamentos/webhook/`. O `MockGateway` se recusa a rodar fora do modo de desenvolvimento.
-- **E-mails:** inscrição confirmada, vaga aberta na lista de espera, partida cancelada, vaga repassada e pagamento devolvido. São enviados só depois que a transação é gravada (em desenvolvimento, aparecem no console).
-- **Portal:** Financeiro com saldo a liberar e disponível, extrato filtrável e histórico de repasses, além de cancelamento de partida com reembolso.
-- **Migração dos dados antigos:** as inscrições existentes foram convertidas para os novos status (pago → confirmada, pendente → aguardando pagamento, reembolsado → reembolsada) sem perder histórico.
+  | Card | O que mostra |
+  | --- | --- |
+  | **Saldo a receber** (verde-limão) | Valor liberado + a liberar, e quanto já caiu na conta no mês |
+  | **Vagas vendidas** | Vagas pagas nos jogos do mês e o que elas rendem para a quadra |
+  | **Horários ociosos** | Horários livres nos próximos 7 dias e quanto valeriam como partidas lotadas |
 
-### Fase 2 · Jogadores, níveis e partidas equilibradas
+- **Agenda do dia com publicação em um toque:**
+  - Abas para os próximos 7 dias, cada uma com o número de horários livres.
+  - Uma linha do tempo por quadra.
+  - Um toque num horário livre publica a partida com o último aluguel praticado
+    na quadra, a capacidade dela, 2 goleiros grátis (a partir de 8 vagas) e o
+    nível "Aberta a todos".
+  - O preço por jogador aparece antes, na linha da quadra.
+  - Enquanto ninguém comprou, o horário mostra **Desfazer**.
+- **Linguagem do dono da quadra:** "Vaga vendida", "Devolução ao jogador",
+  "Transferência para a sua conta" e "Centavos do rateio". A referência técnica
+  do repasse (`mock_tr_…`) saiu do extrato.
+- **Saiu do Início:** a tabela de próximas partidas (com "em pagamento"), a lista
+  "hoje na arena" e o card de mensalistas. O **cancelamento com reembolso** foi
+  para a Agenda, em cada partida.
 
-- **Perfil:** 3 perguntas (autoavaliação, frequência e experiência), posição e "topo jogar no gol". O nível de 1 a 5 é calculado pelas respostas e é pedido antes da primeira partida.
-- **Trava de nível:** Iniciante aceita níveis 1–2, Intermediário 2–4, Avançado 4–5 e Aberta a todos 1–5. A trava cai 1h antes do prazo do mínimo de jogadores, se ainda houver vaga.
-- **Goleiro:** vaga própria e grátis, com o aluguel dividido entre os jogadores de linha. Goleiro que falta sem avisar perde a vaga grátis por 14 dias.
-- **Check-in:** a recepção lê o QR do comprovante. Se a arena fez check-in em alguém da partida, quem não apareceu leva falta.
-- **Confiabilidade:** percentual de presença, exibido no perfil.
-- **Avaliação pós-jogo** (até 7 dias depois): nível da partida, elogios (só positivos) e, em partidas com faixa, sinal de que um colega joga acima ou abaixo dela. Três colegas diferentes sinalizando a mesma coisa ajustam o nível em um ponto.
-- **Times:** sugestão de dois times de força parecida, com um goleiro em cada.
+### Fase 2 · Gamificação (já existia)
 
-### Fase 3 · Site, app e acesso
+Perfis com nível de 1 a 5, posição, trava de nível e vaga de goleiro grátis,
+feitos em 14/10. O check-in do portal ganhou o visual novo, com avatares e times
+sugeridos.
 
-- **Site em `/`:** apresentação, jogos em destaque e chamada para arenas.
-- **App em `/app/`:** os endereços antigos (`/partidas/...` e outros) redirecionam para o app.
-- **Tema escuro:** fundo `zinc-950`, neon verde-limão (ação) e ciano (informação), superfícies de vidro e títulos em Archivo extra-negrito. Barra de navegação inferior no celular.
-- **Feed:**
-  - Cada partida mostra os rostos de quem vai, as vagas restantes, a faixa de nível e o preço.
-  - Filtros de um toque: dia, "Meu nível", piso e "Perto de mim".
-  - O checkout rápido abre por cima da lista.
-- **Login pelo celular:** código de 6 dígitos que vale 10 minutos, com 5 tentativas por código e até 3 códigos a cada 15 minutos por número. Só o hash do código fica no banco. A conta de jogador é criada no primeiro acesso, e o login por senha continua disponível.
-- **Localização:** latitude e longitude da arena configuráveis no Portal. A distância é calculada na hora; a localização do jogador **não é gravada**.
-- **Telas novas ou refeitas:** partida, checkout, Pix, comprovante, minhas partidas, perfil, configurar perfil, avaliação, entrar e cadastro.
-- **O Portal do Gestor mantém o visual claro "Clean SaaS"**, e o check-in entrou no menu.
+### Fase 3 · Visual (Dark/Neon)
 
-### Dados de demonstração (`populate_db`)
+- **Portal no mesmo visual do app:**
+  - fundo `zinc-950`, verde-limão para ação e dinheiro, ciano para informação;
+  - vidro, Archivo extra-negrito;
+  - menu lateral no computador e barra inferior no celular.
+- **Todas as telas do portal foram refeitas:** início, agenda, check-in,
+  check-in pelo QR, financeiro, ajustes (antes "Configurações"), login e acesso restrito.
+- **Páginas de erro 404 ("Bola fora") e 500** no visual da marca. Antes aparecia
+  o "Not Found" cru do Django.
+- **Tailwind extraído e limpo:**
+  - o CDN saiu e o CSS é compilado pelo executável oficial do Tailwind 4.3.3, sem Node.js;
+  - o executável só roda depois de conferido o SHA-256 publicado no GitHub;
+  - fonte em `arena/estilos/entrada.css` e comando `python manage.py compilar_css` (`--watch` enquanto edita);
+  - componentes `botao-neon` (18 botões unificados), `botao-vidro`, `campo` e `selo`;
+  - saíram os filtros e as cores do tema claro antigo;
+  - antes de trocar, comparei capturas do app com o CDN e com o CSS compilado: ficaram idênticas.
 
-O comando "volta no tempo" para criar 6 dias de histórico real. Todas as
-operações passam pelas mesmas regras do sistema:
+### Fase 4 · Deploy (Render)
 
-- Checkouts, cancelamentos com crédito, uma partida cancelada por falta de quórum e outra pela arena.
-- Check-ins com faltas, avaliações, um ajuste de nível pela comunidade e repasses já pagos.
-- Para o futuro: partidas lotadas com lista de espera, reservas aguardando pagamento e as partidas do Jogador Demo.
+| Item | O que foi feito |
+| --- | --- |
+| `requirements.txt` | + `gunicorn` 26.2 e `whitenoise` 6.12 (o `dj-database-url` já estava) |
+| `settings.py` | WhiteNoise com arquivos comprimidos e com hash (cache de 10 anos no navegador), `STATIC_ROOT`, `ALLOWED_HOSTS = ['*']` por padrão, domínio do Render no CSRF, cookies seguros, HSTS, cabeçalho do proxy HTTPS e log de erros no console |
+| `build.sh` (executável) | `pip install`, `compilar_css`, `collectstatic`, `migrate` e a demonstração se o banco estiver vazio |
+| `start.sh` (executável) | Agendador em segundo plano + gunicorn |
+| `render.yaml` | Web + PostgreSQL gratuitos, região Virginia, chave secreta e senha da demonstração geradas pelo Render |
+| `.python-version` | Python 3.14 no Render |
+| `.gitattributes` | Scripts `.sh` sempre com fim de linha do Linux (senão quebrariam no Render) |
+
+### Fase final · Dados
+
+- **`populate_db`:**
+  - 8 partidas futuras por arena (eram 6), o que dá 20 abertas;
+  - nova opção `--se-vazio`, que só popula um banco sem arenas e nunca apaga nada;
+  - fora do modo de desenvolvimento, exige `ARENAMATCH_SENHA_DEMO` com pelo menos 12 caracteres.
+- Rodei o comando no banco local. Os acessos estão na tabela acima.
 
 ---
 
 ## Decisões que tomei sozinho (vale revisar)
 
-As regras que você escolheu nos pop-ups foram seguidas à risca. Nos pontos
-abaixo, que você não tinha definido, fiz a escolha que me pareceu mais segura.
-Todas são fáceis de mudar (a maioria é uma constante no topo de `arena/models.py`).
-
 | Tema | O que fiz | Por quê |
 | --- | --- | --- |
-| Arredondamento | A parte da quadra é truncada no centavo (R$ 200 ÷ 14 = R$ 14,28). Quando todas as vagas de linha são pagas, a arena recebe os centavos que faltam, pagos pela plataforma no fechamento | A arena nunca recebe menos que o aluguel, e o preço anunciado fica "redondo" |
-| **Tarifa do gateway** | **100% custo da plataforma**, inclusive sobre a parte da arena, e não volta em estornos | É o modelo mais simples para a arena. **Na demonstração, as tarifas consumiram ~14% da receita bruta da plataforma** (R$ 237 de R$ 1.714). Com split, dá para dividir a tarifa proporcionalmente. É uma decisão comercial sua |
-| Acréscimo do cartão | 5% sobre o total (parte da quadra + taxa), receita da plataforma | Cobre a tarifa típica de cartão |
-| "Libera no dia seguinte" | 24h depois do **fim** do jogo | Dá tempo de tratar reclamações antes do repasse |
-| Repasse de vaga | Quem repassa recebe **crédito** (não dinheiro) quando alguém da lista de espera paga | Coerente com a regra de cancelamento com crédito |
-| Fórmula do nível | (2 × autoavaliação + frequência + experiência) ÷ 4, arredondado | A autoavaliação pesa mais, e as outras duas corrigem exageros |
-| Ajuste pela comunidade | 3 colegas diferentes com o mesmo sinal = ±1 nível; sinais em partidas "Aberta a todos" não contam | Evita que uma pessoa sozinha (ou uma partida sem faixa) mude o nível de alguém |
-| Goleiros | O portal sugere 2 vagas de goleiro em partidas com 8 ou mais jogadores | Um por time |
-| Falta | Só conta se a arena fez check-in de alguém naquela partida | Se a arena não usa o check-in, ninguém é punido por isso |
-| Janelas | Check-in de 1h antes até o fim do jogo; avaliação até 7 dias depois | Valores comuns no mercado, ajustáveis |
-
----
-
-## Bibliotecas e ferramentas instaladas
-
-| O quê | Versão | Para quê | Onde |
-| --- | --- | --- | --- |
-| `psycopg[binary]` | 3.3.6 | Driver do PostgreSQL (sucessor do psycopg2, recomendado pelo Django) | `requirements.txt` |
-| `dj-database-url` | 3.1.2 | Lê a `DATABASE_URL` | `requirements.txt` |
-| `APScheduler` | 3.11.3 (+ `tzlocal` 5.4.4) | Agendador de rotinas | `requirements.txt` |
-| `ruff` | 0.17.0 | Verificação de código | só no `venv` (ferramenta de desenvolvimento) |
-| `websocket-client` | 1.9.2 | Usado só pelas minhas capturas de tela; pode remover com `pip uninstall websocket-client` | só no `venv` |
-| PostgreSQL | 18.6 | Banco de dados | serviço do Windows |
-| GitHub CLI | 2.102.0 | Criar o repositório e enviar os commits | Windows (winget) |
-| Tailwind (browser) 4.3.3, qrcodejs 1.0.0, fontes Archivo e Inter | — | Visual do app e QR do comprovante | carregados por CDN, sem instalação |
-
-Escolhi o **APScheduler** em vez de **Celery + Redis** porque as rotinas são
-poucas e periódicas. O Celery exigiria um Redis rodando (sem versão oficial
-para Windows) e mais um processo para manter. Se um dia houver filas pesadas
-(ex.: milhares de notificações), a troca é localizada em `arena/agendador.py`.
-
----
-
-## Problemas encontrados e resolvidos
-
-| Problema | Causa | Solução |
-| --- | --- | --- |
-| A migração gerada apagaria o status de pagamento das inscrições antigas | O Django removeria o campo antigo antes de converter os valores | Dividi em três migrações: cria o campo novo, converte os dados e só então remove o antigo |
-| Erro do PostgreSQL ao gerar repasses | `SELECT ... FOR UPDATE` não pode travar o lado opcional de um *join* | A consulta travada deixou de carregar relações junto |
-| A rotina do agendador derrubava a conexão nos testes | Fechar conexões "velhas" dentro de uma transação aberta | As conexões só são recicladas fora de transações |
-| **Login pelo celular: as tentativas erradas não eram contadas** | O erro desfazia a transação, inclusive o contador; daria para tentar códigos sem limite | O erro passou a ser lançado depois de gravar a tentativa, e um teste cobre o caso |
-| O `populate_db` colocava jogadores fora da faixa de nível em listas de espera | Os dados eram sorteados sem checar elegibilidade | A demonstração passou a usar a mesma regra de elegibilidade do app |
-| Telas do celular | Botão "Criar conta" quebrava em duas linhas; espaçamento torto no checkout; nome da arena espremido no histórico; crédito vazando do cartão no perfil; avaliação longa demais | Ajustes de layout, conferidos com capturas em 390px (celular) e 1280px (desktop) |
-| Extrato do crédito confuso | O texto do lançamento era o da arena (com o nome do próprio jogador) | O extrato do jogador mostra "Crédito recebido · Arena" e a data do jogo |
+| **"Saldo Disponível"** | O card virou **"Saldo a receber"** (liberado + a liberar) | A rotina horária transfere o saldo liberado para a arena, então o "disponível" fica quase sempre em R$ 0,00. Na demonstração, mostrava R$ 0,00 com R$ 1.079,87 a caminho. O Financeiro continua mostrando o "Liberado" separado |
+| **"1 clique"** | O toque publica direto, com os valores sugeridos, e oferece **Desfazer** enquanto ninguém comprou | É o "1 clique" literal. Quem quiser ajustar aluguel, vagas ou nível usa a Agenda, que tem o formulário completo |
+| **psycopg2-binary** | Mantive o **psycopg 3** | É o sucessor do psycopg2 e o driver recomendado pelo Django 5. Funciona igual no Render |
+| **Celery + Redis** | Mantive o **APScheduler** | Decidido em 14/10: são poucas rotinas periódicas. O Redis seria mais um serviço pago no Render |
+| **Agendador no Render** | Roda **no mesmo contêiner do site** | O plano gratuito não tem *worker*. O `render.yaml` traz o worker pronto (comentado) para quando houver plano pago |
+| **`ALLOWED_HOSTS = ['*']`** | Feito como pedido, mas pela variável `DJANGO_ALLOWED_HOSTS` | Depois do primeiro deploy, troque para `arenamatch.onrender.com` no painel (Environment). Não exige mudar código |
+| **Senhas no Render** | Todas as contas de demonstração usam uma senha gerada pelo Render | **O repositório é público.** Com `admin123`, qualquer pessoa entraria como superusuário no site publicado |
+| **Login pelo celular no Render** | O código **não** aparece na tela em produção | Mostrar o código na tela deixaria qualquer pessoa entrar na conta de qualquer telefone. No Render, use o login com senha |
+| **Gateway no Render** | **Simulado** (`ARENAMATCH_PERMITIR_GATEWAY_SIMULADO=True`) | Ainda não há gateway real. O "Simular pagamento aprovado" funciona no site publicado, e nenhum dinheiro se move |
+| Região | Virginia (EUA) | É a região do Render mais próxima do Brasil |
+| CSS no repositório | O CSS compilado é versionado, e o build recompila | Se o download do Tailwind falhar no Render, o deploy segue com o arquivo versionado |
+| Nomes no portal | "Ajustes", "Transferências", "Devoluções", "Livre" | Linguagem do dono da quadra, sem termos contábeis |
+| HTTPS | Sem redirecionamento no Django; HSTS de 1 hora | O Render já redireciona para HTTPS. O HSTS pode crescer quando houver domínio próprio |
 
 ---
 
 ## Verificação feita
 
-- **157 testes automatizados** passando no PostgreSQL (~1 minuto), em 11 arquivos: modelos, checkout, partidas, jogadores, API, portal, admin, app, site, agendador e `populate_db`.
-- `makemigrations --check` e `manage.py check` sem pendências.
-- `ruff` sem erros nas regras padrão. Há um `ruff` global na sua máquina que liga regras extras de estilo e aponta 110 itens de estilo, nenhum bug; não as adotei porque o projeto não as define.
-- **Conferência do razão** nos dados finais:
-  - Em cada arena, as vendas batem com as inscrições confirmadas, mais os ajustes de centavos.
-  - As partidas canceladas têm saldo zero.
-  - Nenhum jogador tem crédito negativo.
-- **Teste de fumaça** no servidor real:
-  - Todas as páginas respondem para o visitante, o jogador, o gestor e o admin.
-  - Os endereços antigos redirecionam para o app.
-  - O login pelo celular funciona de ponta a ponta com o número de demonstração.
-- **Revisão visual** com capturas no celular (390px) e no desktop (1280px), sem rolagem horizontal.
+- **169 testes automatizados** passando (eram 157). Os 12 novos cobrem:
+  - os 3 números do painel e a agenda do dia;
+  - a publicação em um toque, usando o formulário exatamente como aparece na tela;
+  - o "Desfazer";
+  - o dia inválido na URL;
+  - `--se-vazio` e a senha da demonstração;
+  - as 15+ partidas abertas;
+  - o CSS compilado;
+  - a rejeição de um executável do Tailwind adulterado;
+  - a página 404.
+- A suíte também passa com `DEBUG=False`, como em produção.
+- `manage.py check --deploy`: restam 3 avisos esperados (HSTS de subdomínios,
+  pré-carregamento do HSTS e redirecionamento HTTPS, que o Render já faz).
+- **Ensaio do deploy:**
+  - Num **banco PostgreSQL novo e vazio**, o `build.sh` completo rodou com
+    `DEBUG=False`: instalação, CSS, collectstatic, migrate e demonstração, em 58 s.
+  - Rodado de novo, não alterou nada.
+- **Modo produção local:**
+  - as páginas respondem;
+  - o WhiteNoise entrega o CSS com hash, comprimido e com cache longo;
+  - o login do gestor passa pelo CSRF atrás do proxy HTTPS simulado (o erro mais comum de Django no Render);
+  - o HSTS aparece só em HTTPS.
+- **Capturas** de todas as telas do portal em 390 px, 1024 px e 1280 px, sem rolagem horizontal.
 
-## Commits da madrugada
+**O que não pude testar aqui:** o gunicorn e o `start.sh`, porque não rodam no
+Windows e não há WSL nem Docker nesta máquina. São comandos padrão, mas o
+primeiro deploy é a prova real. Se algo falhar, o log do Render
+(**arenamatch > Logs**) mostra o erro completo.
 
-```text
-c5d1411 feat: base do motor financeiro e estruturacao inicial
-7887b54 feat(infra): PostgreSQL via DATABASE_URL e agendador de rotinas (Fase 0)
-4ef54ce feat(financeiro): checkout in-app, razão contábil e regras automáticas (Fase 1)
-6544c7d feat(jogadores): perfis, níveis, goleiro, check-in e avaliações (Fase 2)
-bb57de4 feat(app): site em /, app do jogador em /app/, login pelo celular e perto de mim (Fase 3)
-        docs: relatório da madrugada
-```
+## Pontos de atenção
 
----
+1. **Nenhum dinheiro real se move**, nem no Render. Antes de cobrar, troque o
+   gateway e desligue `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO`. O webhook do
+   gateway simulado não valida assinatura.
+2. **Banco gratuito expira em 30 dias.** Se o piloto passar disso, migre o banco antes.
+3. Continuam valendo os pontos jurídicos e contábeis do relatório de 14/10:
+   crédito não sacável e CDC, custódia e split, notas fiscais e LGPD.
 
-## O que ficou de fora (e por quê)
+## Arquivos novos e alterados
 
-- **Login com Google:** precisa de credenciais OAuth criadas por você no Google Cloud Console. O login pelo celular já cobre o acesso sem senha.
-- **Gateway real com split e SMS real:** dependem de contrato e chaves com os provedores. A estrutura está pronta: `Gateway` em `arena/pagamentos.py` e `ARENAMATCH_SMS_BACKEND` em `arena/acesso.py`.
-- **Visual "Plei":** usei a referência de experiência (escuro, neon, rostos no feed, compra em um toque) com identidade própria, sem copiar a marca.
-
-## Pontos de atenção antes de ir para produção
-
-1. **Nenhum dinheiro real se move hoje.** O `MockGateway` só funciona em desenvolvimento e o webhook dele não valida assinatura. A implementação do gateway real precisa validar a assinatura de cada notificação.
-2. **Validar com advogado e contador antes de cobrar de verdade:**
-   - O **crédito não sacável** no cancelamento pode esbarrar no direito de arrependimento do CDC em compras pela internet.
-   - **Guardar o dinheiro das arenas** na conta do ArenaMatch pode ser tratado como atividade regulada de pagamentos. Com o split do gateway, a parte da arena vai direto para a conta dela, e o razão passa a só espelhar isso.
-   - **Notas fiscais:** quem emite a nota de cada parte (taxa e aluguel)?
-3. **SMS:** hoje o limite é por número de telefone. Antes de ligar um provedor pago, inclua limite por IP e um captcha. Sem isso, um robô pode disparar SMS para milhares de números e gerar custo.
-4. **LGPD:** telefone e CPF são dados pessoais. Faltam política de privacidade e termos de uso. A localização não é gravada no banco: só vai na URL da busca.
-5. **Tailwind via CDN** não é para produção. Antes do deploy, gere o CSS com o build do Tailwind.
-6. **Python 3.15 com Django 5.2:** o Django declara suporte oficial até o Python 3.14. Tudo passou nos testes, mas é a primeira suspeita se algo estranho aparecer.
-7. **Repositório público:** o código e as regras de negócio estão visíveis. Os segredos (`.env`) não vão para o GitHub.
-8. **`db.sqlite3`:** é o banco antigo, que não é mais usado e nem vai para o GitHub. Pode apagar quando quiser.
-
-## Próximos passos sugeridos
-
-1. **Escolher o gateway com split** (Mercado Pago, Pagar.me ou Asaas). Compare a tarifa e quem paga a tarifa no split; isso mexe direto na sua margem.
-2. **Conversa com advogado e contador** sobre crédito, split e notas fiscais, com este relatório em mãos.
-3. **SMS real** (com limite por IP) e **login com Google**.
-4. **Deploy:**
-   - PostgreSQL gerenciado.
-   - Agendador como *worker*, com uma instância só.
-   - Build do Tailwind, `DEBUG=False` e HTTPS.
-5. **Piloto com uma arena**, para medir conversão de horários vagos e a taxa de faltas.
+- **Novos:**
+  - `render.yaml`, `build.sh`, `start.sh`, `.python-version`, `.gitattributes`;
+  - `arena/estilos/entrada.css` e `arena/static/arena/css/arena.css`;
+  - `arena/management/commands/compilar_css.py`;
+  - `arena/templates/404.html`, `500.html` e `arena/_manager_horario.html`;
+  - `arena/tests/test_deploy.py`.
+- **Refeitos:** todos os templates `manager_*` e `_manager_*`.
+- **Alterados:**
+  - `gestao.py`, `views.py`, `arena_extras.py`, `populate_db.py` e `settings.py`;
+  - `requirements.txt`, README e `.env.example`;
+  - 13 templates do app e do site (CSS compilado no lugar do CDN e componente `botao-neon`, sem mudança visual).
+- **Removidos:** `_manager_campo.html` (o portal usa o mesmo campo do app) e o
+  código do painel antigo (`proximas_partidas`, `agenda_de_hoje`, filtros do tema claro).

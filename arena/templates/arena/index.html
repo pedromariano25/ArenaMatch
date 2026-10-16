@@ -63,7 +63,7 @@
     <div class="vidro mt-4 rounded-3xl px-6 py-16 text-center">
       <p class="titulo text-2xl text-white">Nenhuma partida encontrada</p>
       <p class="mx-auto mt-2 max-w-sm text-sm text-zinc-400">Tente outro dia, piso ou nível. As arenas abrem novas partidas o tempo todo.</p>
-      <a href="{% url 'arena:vitrine' %}" class="mt-6 inline-flex rounded-full bg-lime-400 px-5 py-2.5 text-sm font-black text-zinc-950 neon">Limpar filtros</a>
+      <a href="{% url 'arena:vitrine' %}" class="botao-neon mt-6">Limpar filtros</a>
     </div>
   {% endif %}
 </section>
@@ -96,7 +96,7 @@
 
     <div class="mt-6 flex gap-3">
       <button type="button" data-fechar class="rounded-full bg-white/5 px-5 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10">Voltar</button>
-      <button type="submit" class="flex-1 rounded-full bg-lime-400 px-5 py-3 text-sm font-black text-zinc-950 neon hover:bg-lime-300">Confirmar</button>
+      <button type="submit" class="botao-neon flex-1 py-3">Confirmar</button>
     </div>
   </form>
 </dialog>

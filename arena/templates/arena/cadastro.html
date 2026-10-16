@@ -25,7 +25,7 @@
     {% include "arena/_campo.html" with campo=form.password1 %}
     {% include "arena/_campo.html" with campo=form.password2 %}
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit" class="w-full rounded-full bg-lime-400 px-5 py-3.5 text-base font-black text-zinc-950 transition hover:bg-lime-300 neon">Criar conta e começar a jogar</button>
+    <button type="submit" class="botao-neon w-full py-3.5 text-base">Criar conta e começar a jogar</button>
     <p class="text-center text-sm text-zinc-500">
       Já tem conta?
       <a href="{% url 'arena:entrar_telefone' %}" class="font-semibold text-zinc-300 hover:text-white">Entrar</a>

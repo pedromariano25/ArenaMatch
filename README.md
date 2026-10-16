@@ -12,7 +12,7 @@ encontram partidas abertas para completar.
 
 | Frente | Público | O que entrega |
 | --- | --- | --- |
-| **B2B** | Gestores de complexos esportivos | **ArenaManager**, o portal do gestor: dashboard financeiro, agenda semanal das quadras (mensalistas, avulsos e bloqueios), financeiro e configurações. Com um clique, transforma **horários vagos** em **partidas abertas** para a comunidade. |
+| **B2B** | Gestores de complexos esportivos | **ArenaManager**, o portal do gestor: painel com saldo a receber, vagas vendidas e horários ociosos, agenda das quadras (mensalistas, avulsos e bloqueios), check-in, financeiro e ajustes. Com um toque, transforma **horários vagos** em **partidas abertas** para a comunidade. |
 | **B2C** | Jogadores avulsos | App web mobile-first para achar partidas por dia, nível, piso, arena ou distância, ver quem vai e garantir a vaga pagando pelo app. |
 
 As duas frentes compartilham o mesmo banco de dados. A receita da arena cresce
@@ -76,6 +76,23 @@ desenvolvimento, o SMS sai no log do servidor e o código aparece na própria te
 Os endereços antigos da vitrine (`/partidas/...`, `/minhas-inscricoes/` etc.)
 redirecionam para os equivalentes em `/app/`.
 
+## Portal da arena
+
+O Portal do Gestor (`/manager/`) segue o mesmo visual escuro do app, com menu
+lateral no computador e barra inferior no celular.
+
+| Tela | O que faz |
+| --- | --- |
+| Início | Três números (saldo a receber, vagas vendidas no mês e horários ociosos nos próximos 7 dias) e a agenda do dia por quadra. **Um toque num horário livre publica a partida** com os valores sugeridos (último aluguel da quadra, capacidade, goleiros e nível aberto); o preço por jogador aparece antes. Enquanto ninguém comprou, o horário mostra "Desfazer" |
+| Agenda | Grade semanal por quadra. O horário livre abre o formulário completo (aluguel, vagas, goleiros e nível, com prévia do preço); a partida publicada pode ser cancelada com reembolso automático |
+| Check-in | Lista de presença dos jogos de hoje e times sugeridos; o QR do comprovante abre a ficha do jogador |
+| Financeiro | Liberado, a liberar, transferido e vendido no mês, extrato e transferências |
+| Ajustes | Dados da arena, localização, mínimo de jogadores e quadras |
+
+O "saldo a receber" soma o valor liberado e o a liberar: o liberado é
+transferido à arena a cada hora pela rotina `gerar_repasses`, então quase nunca
+fica parado.
+
 ## Stack
 
 | Camada | Tecnologia |
@@ -83,10 +100,11 @@ redirecionam para os equivalentes em `/app/`.
 | Linguagem | Python 3.15 |
 | Framework web | Django 5.2 LTS |
 | APIs B2C | Django REST Framework 3.18 (token e sessão) |
-| Site e app do jogador | Templates Django + Tailwind CSS 4 (via CDN), fontes Archivo e Inter |
+| Site, app e portal | Templates Django + Tailwind CSS 4 (compilado pelo executável oficial, sem Node.js), fontes Archivo e Inter |
 | Banco de dados | PostgreSQL 18 (driver psycopg 3), configurado por `DATABASE_URL` |
 | Rotinas automáticas | APScheduler, num processo próprio (`manage.py agendador`) |
 | Configuração | Variáveis de ambiente via `python-dotenv` |
+| Produção | gunicorn, WhiteNoise (arquivos estáticos comprimidos e com hash) e Blueprint do Render (`render.yaml`) |
 
 ## Como rodar localmente
 
@@ -124,6 +142,17 @@ python manage.py runserver
 python manage.py agendador
 ```
 
+**CSS:** o arquivo final (`arena/static/arena/css/arena.css`) está no
+repositório, então o projeto roda sem compilar nada. Ao mexer em classes dos
+templates, deixe o Tailwind recompilando em outro terminal:
+
+```powershell
+python manage.py compilar_css --watch
+```
+
+Na primeira vez, o comando baixa o executável oficial do Tailwind (~110 MB) para
+o cache do usuário (fora do projeto) e confere o SHA-256 publicado no release.
+
 | Endereço | O que é |
 | --- | --- |
 | <http://127.0.0.1:8000/> | Site de apresentação |
@@ -138,7 +167,8 @@ python manage.py agendador
 ### Acessos de demonstração
 
 Criados pelo `populate_db`, que só roda com `DEBUG=True`. As senhas são
-fracas de propósito: **não use esses acessos fora do ambiente local**.
+fracas de propósito: **não use esses acessos fora do ambiente local**. Num
+servidor público (Render), todas as contas usam a senha de `ARENAMATCH_SENHA_DEMO`.
 
 | Perfil | Onde entrar | Login | Senha |
 | --- | --- | --- | --- |
@@ -158,12 +188,18 @@ Sem os dados de demonstração, crie um administrador com `python manage.py crea
 | --- | --- | --- | --- |
 | `DJANGO_SECRET_KEY` | Sim | — | Chave criptográfica do Django. O projeto não sobe sem ela. |
 | `DJANGO_DEBUG` | Não | `False` | Ative (`True`) apenas em desenvolvimento. |
-| `DJANGO_ALLOWED_HOSTS` | Não | vazio | Hosts aceitos, separados por vírgula. |
+| `DJANGO_ALLOWED_HOSTS` | Não | `*` | Hosts aceitos, separados por vírgula. Restrinja ao domínio depois do primeiro deploy. |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | Não | vazio | Origens extras para formulários (ex.: `https://www.arenamatch.com.br`). O domínio do Render entra sozinho. |
 | `DATABASE_URL` | Sim | — | Conexão com o PostgreSQL (`postgres://usuario:senha@host:porta/banco`). O usuário precisa de `CREATEDB` para os testes. |
 | `ARENAMATCH_GATEWAY_PAGAMENTO` | Não | `arena.pagamentos.MockGateway` | Classe do gateway de pagamentos. |
 | `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO` | Não | igual a `DJANGO_DEBUG` | Libera o gateway simulado (desenvolvimento, testes e CI). |
 | `ARENAMATCH_SMS_BACKEND` | Não | `arena.acesso.SmsConsole` | Classe que envia o código de acesso por SMS. A padrão só registra no log; em produção, um provedor real. |
-| `ARENAMATCH_URL_BASE` | Não | `http://127.0.0.1:8000` | Endereço público usado nos links dos e-mails. |
+| `ARENAMATCH_URL_BASE` | Não | `RENDER_EXTERNAL_URL` ou `http://127.0.0.1:8000` | Endereço público usado nos links dos e-mails. |
+| `ARENAMATCH_POPULAR_DEMO` | Não | `False` | No `build.sh`, popula o banco **vazio** com a demonstração (`populate_db --se-vazio`). |
+| `ARENAMATCH_SENHA_DEMO` | Com `DEBUG=False` | — | Senha de todas as contas de demonstração num servidor público (mínimo de 12 caracteres). |
+| `ARENAMATCH_AGENDADOR_NO_WEB` | Não | `True` | O `start.sh` sobe o agendador junto do site (plano gratuito do Render). |
+| `DJANGO_SECURE_HSTS_SECONDS` | Não | `3600` | Duração do HSTS em produção. |
+| `DJANGO_LOG_LEVEL` | Não | `INFO` | Nível do log do Django no console (erros 500 sempre saem com o traceback). |
 | `DJANGO_EMAIL_BACKEND` | Não | console | Backend de e-mail (em produção, SMTP). |
 
 ### Rotinas automáticas
@@ -177,6 +213,29 @@ agendador por ambiente.
 python manage.py agendador            # roda até Ctrl+C
 python manage.py agendador --uma-vez  # executa cada rotina uma vez (cron, conferência)
 ```
+
+## Deploy no Render
+
+O repositório já tem tudo para um deploy sem linha de comando:
+
+| Arquivo | Papel |
+| --- | --- |
+| `render.yaml` | Blueprint: serviço web e PostgreSQL, ambos no plano gratuito, na região de Virginia, com as variáveis de ambiente (chave secreta e senha da demonstração geradas pelo Render) |
+| `build.sh` | Instala as dependências, recompila o CSS, roda `collectstatic`, `migrate` e, se o banco estiver vazio, a demonstração |
+| `start.sh` | Sobe o agendador em segundo plano e o gunicorn |
+| `.python-version` | Python 3.14 no Render (o Django 5.2 suporta até a 3.14) |
+
+Passo a passo:
+
+1. No [painel do Render](https://dashboard.render.com/), clique em **New > Blueprint**.
+2. Conecte a conta do GitHub e escolha o repositório `ArenaMatch` (branch `main`).
+3. Confirme a criação. O primeiro build leva alguns minutos (a demonstração é criada nele).
+4. A senha das contas de demonstração está em **arenamatch > Environment > `ARENAMATCH_SENHA_DEMO`**.
+
+Limites do plano gratuito: o site "dorme" depois de 15 minutos sem acesso (o
+primeiro acesso seguinte leva cerca de 1 minuto), o PostgreSQL gratuito expira
+30 dias depois de criado e não há *background worker* (por isso o agendador roda
+junto do site). O deploy usa o **gateway simulado**: nenhum dinheiro real se move.
 
 ## API REST
 
@@ -209,13 +268,18 @@ etc.) retornam **HTTP 400** com a mensagem em `non_field_errors`.
 python manage.py test arena
 ```
 
+Os testes de checkout usam o gateway simulado: rode com `DJANGO_DEBUG=True` (como
+no `.env` de desenvolvimento) ou com `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO=True`.
+
 ## Estrutura do projeto
 
 ```text
 .
 ├── arena/
 │   ├── api/                # Serializers, views, permissões e rotas da API REST
-│   ├── management/         # Comandos populate_db (dados de demonstração) e agendador
+│   ├── estilos/            # Fonte do CSS (Tailwind): tema, utilidades e componentes
+│   ├── management/         # Comandos populate_db, agendador e compilar_css
+│   ├── static/arena/css/   # CSS compilado (versionado; o deploy recompila)
 │   ├── migrations/
 │   ├── templates/          # App e portal (arena/), site (site/) e customizações do back-office (admin/)
 │   ├── templatetags/       # Filtros de apresentação, ícones e indicadores
@@ -224,7 +288,7 @@ python manage.py test arena
 │   ├── admin.py            # Back-office da plataforma (Django Admin)
 │   ├── agendador.py        # Monta o agendador (APScheduler) com as rotinas registradas
 │   ├── checkout.py         # Inscrição: reserva, pagamento, expiração, cancelamento, repasse, lista de espera
-│   ├── gestao.py           # Cálculos do portal: KPIs, grade da agenda, financeiro
+│   ├── gestao.py           # Cálculos do portal: números do painel, agenda (semana e dia), financeiro
 │   ├── jogadores.py        # Perfil e nível, elegibilidade, check-in, avaliações e times
 │   ├── localizacao.py      # Distância até as arenas ("perto de mim")
 │   ├── models.py           # Entidades e regras de negócio
@@ -238,30 +302,35 @@ python manage.py test arena
 │   └── views.py            # Site, app do jogador (B2C) e Portal do Gestor (B2B)
 ├── config/                 # settings, urls, wsgi/asgi
 ├── .env.example            # Modelo de variáveis de ambiente (o .env real não é versionado)
+├── build.sh                # Build de produção (Render)
 ├── manage.py
-└── requirements.txt
+├── render.yaml             # Blueprint do Render (web + PostgreSQL)
+├── requirements.txt
+└── start.sh                # Início em produção: agendador + gunicorn
 ```
 
 ## Roadmap
 
 Implementado: portal B2B, pagamento in-app com razão contábil, perfis e níveis,
-check-in, avaliações, site, app do jogador e login pelo celular. Próximos passos:
+check-in, avaliações, site, app do jogador, login pelo celular, CSS compilado e
+deploy no Render. Próximos passos:
 
 1. **Pagamentos:** trocar o `MockGateway` por um gateway real com split (Mercado Pago, Pagar.me ou Asaas).
 2. **SMS e login social:** provedor real de SMS para o código de acesso e entrar com Google (precisa de credenciais OAuth).
 3. **Agenda recorrente:** gerar horários de mensalistas e ociosos em lote.
 4. **Notificações:** WhatsApp, além do e-mail, na inscrição e no cancelamento de partidas.
-5. **Produção:** build do Tailwind (sem CDN), arquivos estáticos e deploy.
+5. **Produção de verdade:** domínio próprio, `DJANGO_ALLOWED_HOSTS` restrito, banco pago (o gratuito expira) e o agendador num worker.
 
 ## Convenções
 
 - Commits seguem o padrão [Conventional Commits](https://www.conventionalcommits.org/pt-br/)
   (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`).
 - Código em conformidade com a PEP 8, com type hints e docstrings.
-- Portal do Gestor em "Clean SaaS": fundo `slate-50`, cartões brancos com borda
-  sutil e `shadow-sm`, destaque `emerald-600` e texto `slate-800`/`slate-900`, sem gradientes.
-- Site e app do jogador em tema escuro: fundo `zinc-950`, destaques neon `lime-400`
-  (ação) e `cyan-400` (informação), superfícies de vidro (`vidro`) e títulos em Archivo
-  extra-negrito (`titulo`). As utilidades ficam em `arena/templates/arena/_head.html`.
+- Site, app do jogador e portal no mesmo tema escuro: fundo `zinc-950`, destaques
+  neon `lime-400` (ação e dinheiro) e `cyan-400` (informação), superfícies de vidro
+  (`vidro`) e títulos em Archivo extra-negrito (`titulo`).
+- Utilidades e componentes (`botao-neon`, `botao-vidro`, `campo`, `selo`) ficam em
+  `arena/estilos/entrada.css`. Crie um componente só quando o padrão se repetir em
+  várias telas; o resto fica em classes utilitárias nos templates.
 - Regras de negócio ficam nos modelos (`clean()`), e `save()` sempre valida.
 - Segredos (`.env`) **nunca** são versionados.

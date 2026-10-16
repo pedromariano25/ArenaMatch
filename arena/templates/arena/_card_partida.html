@@ -68,11 +68,11 @@
     {% if partida.status == "lotada" %}
       <a href="{{ partida.get_absolute_url }}" class="relative z-10 rounded-full bg-white/10 px-4 py-2.5 text-sm font-bold text-zinc-200 transition hover:bg-white/15">Lista de espera</a>
     {% elif not user.is_authenticated %}
-      <a href="{% url 'arena:entrar_telefone' %}?next={{ partida.get_absolute_url|urlencode }}" class="relative z-10 rounded-full bg-lime-400 px-5 py-2.5 text-sm font-black text-zinc-950 transition hover:bg-lime-300 neon">Garantir vaga</a>
+      <a href="{% url 'arena:entrar_telefone' %}?next={{ partida.get_absolute_url|urlencode }}" class="botao-neon relative z-10">Garantir vaga</a>
     {% elif partida.bloqueio %}
       <span class="relative z-10 rounded-full bg-white/5 px-4 py-2.5 text-xs font-bold text-zinc-500" title="{{ partida.bloqueio }}">Fora do seu nível</span>
     {% else %}
-      <button type="button" class="relative z-10 rounded-full bg-lime-400 px-5 py-2.5 text-sm font-black text-zinc-950 transition hover:bg-lime-300 neon"
+      <button type="button" class="botao-neon relative z-10"
         data-checkout="{% url 'arena:checkout' partida.pk %}"
         data-titulo="{{ arena.nome }} · {{ horario.data|rotulo_dia }} {{ horario.hora_inicio|time:'H:i' }}"
         data-pix="{{ partida.preco_final_jogador|brl }}"

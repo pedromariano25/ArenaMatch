@@ -1,0 +1,71 @@
+# Blueprint do Render: site/app/portal (Django + gunicorn) e banco PostgreSQL.
+#
+# Deploy: no painel do Render, "New > Blueprint", escolha este repositório e
+# confirme. O Render cria o banco, gera as chaves secretas e roda o build.sh.
+#
+# Atenção ao plano gratuito:
+# - o serviço web "dorme" após 15 min sem acesso (o primeiro acesso leva ~1 min);
+# - o PostgreSQL gratuito expira 30 dias depois de criado;
+# - não há "background worker": o agendador roda junto do site (start.sh).
+databases:
+  - name: arenamatch-db
+    plan: free
+    region: virginia
+    databaseName: arenamatch
+    user: arenamatch
+
+services:
+  - type: web
+    name: arenamatch
+    runtime: python
+    plan: free
+    region: virginia
+    buildCommand: ./build.sh
+    startCommand: ./start.sh
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: arenamatch-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      # Aceita qualquer host para o primeiro deploy. Depois, restrinja ao domínio
+      # (ex.: arenamatch.onrender.com,www.arenamatch.com.br).
+      - key: DJANGO_ALLOWED_HOSTS
+        value: "*"
+      # 2 processos cabem nos 512 MB do plano gratuito, junto com o agendador.
+      - key: WEB_CONCURRENCY
+        value: "2"
+      # DEMONSTRAÇÃO: o gateway simulado aprova pagamentos sem dinheiro de verdade.
+      # Troque por um gateway real (e remova estas duas linhas) antes de cobrar.
+      - key: ARENAMATCH_GATEWAY_PAGAMENTO
+        value: arena.pagamentos.MockGateway
+      - key: ARENAMATCH_PERMITIR_GATEWAY_SIMULADO
+        value: "True"
+      # Popula o banco vazio com as 3 arenas de demonstração no primeiro deploy.
+      # Todas as contas (admin, gestores, jogadores) usam a senha gerada abaixo:
+      # veja o valor em Environment, no painel do serviço.
+      - key: ARENAMATCH_POPULAR_DEMO
+        value: "True"
+      - key: ARENAMATCH_SENHA_DEMO
+        generateValue: true
+
+# Com plano pago, o agendador pode rodar num worker próprio. Nesse caso, defina
+# ARENAMATCH_AGENDADOR_NO_WEB=False no serviço web e descomente:
+#
+#  - type: worker
+#    name: arenamatch-agendador
+#    runtime: python
+#    plan: starter
+#    region: virginia
+#    buildCommand: pip install -r requirements.txt
+#    startCommand: python -u manage.py agendador
+#    envVars:
+#      - key: DATABASE_URL
+#        fromDatabase:
+#          name: arenamatch-db
+#          property: connectionString
+#      - key: DJANGO_SECRET_KEY
+#        sync: false
