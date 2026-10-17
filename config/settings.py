@@ -41,7 +41,7 @@ if not SECRET_KEY:
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False').strip().lower() in ('1', 'true', 'yes')
 
 # Hosts aceitos, separados por vírgula. Sem a variável, aceita qualquer host ('*'),
-# o que permite subir no Render sem saber o domínio de antemão. Depois do primeiro
+# o que permite subir no Render ou no Railway sem saber o domínio de antemão. Depois do primeiro
 # deploy, prefira restringir (ex.: arenamatch.onrender.com,arenamatch.com.br).
 ALLOWED_HOSTS = [
     host.strip()
@@ -49,17 +49,19 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
-# No Render, o endereço público do serviço vem pronto nestas variáveis.
-RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
-if RENDER_EXTERNAL_HOSTNAME and '*' not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+# No Render e no Railway, o domínio público do serviço vem pronto nestas variáveis.
+DOMINIOS_DA_HOSPEDAGEM = [
+    dominio
+    for nome in ('RENDER_EXTERNAL_HOSTNAME', 'RAILWAY_PUBLIC_DOMAIN')
+    if (dominio := os.environ.get(nome, '').strip())
+]
+if '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS += DOMINIOS_DA_HOSPEDAGEM
 CSRF_TRUSTED_ORIGINS = [
     origem.strip()
     for origem in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
     if origem.strip()
-]
-if RENDER_EXTERNAL_HOSTNAME:
-    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
+] + [f'https://{dominio}' for dominio in DOMINIOS_DA_HOSPEDAGEM]
 
 
 def _variavel_booleana(nome: str, padrao: bool) -> bool:
@@ -80,7 +82,10 @@ ARENAMATCH_SMS_BACKEND = os.environ.get('ARENAMATCH_SMS_BACKEND', 'arena.acesso.
 
 # Endereço público do site, usado nos links dos e-mails.
 ARENAMATCH_URL_BASE = (
-    os.environ.get('ARENAMATCH_URL_BASE') or os.environ.get('RENDER_EXTERNAL_URL') or 'http://127.0.0.1:8000'
+    os.environ.get('ARENAMATCH_URL_BASE')
+    or os.environ.get('RENDER_EXTERNAL_URL')
+    or (f'https://{dominio}' if (dominio := os.environ.get('RAILWAY_PUBLIC_DOMAIN', '').strip()) else '')
+    or 'http://127.0.0.1:8000'
 )
 
 # E-mails: no console por padrão (desenvolvimento). Em produção, configure o SMTP.

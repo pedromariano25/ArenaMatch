@@ -63,3 +63,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Acessos de produção anotados localmente (nunca versionar).
+*.local.txt

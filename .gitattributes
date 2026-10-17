@@ -1,2 +1,3 @@
-# Scripts de shell sempre com LF (rodam no Linux do Render).
+# Scripts de shell e o Dockerfile sempre com LF (rodam no Linux do Render e do Railway).
 *.sh text eol=lf
+Dockerfile text eol=lf

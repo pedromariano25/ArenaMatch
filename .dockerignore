@@ -1,0 +1,15 @@
+# Fora da imagem: segredos, ambiente local, caches e arquivos gerados.
+.env
+.env.*
+!.env.example
+.git
+venv/
+.venv/
+staticfiles/
+**/__pycache__/
+*.pyc
+*.log
+*.sqlite3
+.ruff_cache/
+.vscode/
+.claude/
