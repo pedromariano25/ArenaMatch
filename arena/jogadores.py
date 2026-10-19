@@ -110,6 +110,8 @@ def motivo_inelegivel(
 
     ``perfil`` evita reconsultar o banco quando a mesma checagem roda em várias partidas.
     """
+    if partida.organizador_id is not None and partida.organizador_id == jogador.pk:
+        return "Você organiza esta pelada: as vagas são para quem vai completar o seu grupo."
     if perfil is _PERFIL_NAO_INFORMADO:
         perfil = perfil_do(jogador)
     if perfil is None:

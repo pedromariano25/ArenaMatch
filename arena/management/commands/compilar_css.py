@@ -11,6 +11,7 @@ o executável no cache do usuário, fora do projeto.
 import hashlib
 import os
 import platform
+import shutil
 import stat
 import subprocess
 import sys
@@ -112,11 +113,23 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         executavel = obter_executavel()
-        comando = [str(executavel), "--input", str(ENTRADA), "--output", str(SAIDA)]
-        comando.append("--watch" if options["watch"] else "--minify")
         self.stdout.write(f"Tailwind {VERSAO_TAILWIND}: {ENTRADA.name} → {SAIDA.relative_to(settings.BASE_DIR)}")
+        if options["watch"]:
+            self._rodar(executavel, SAIDA, "--watch")
+            return
+        # O executável do Tailwind às vezes falha ao gravar em pastas sincronizadas (ex.:
+        # OneDrive): compila num arquivo temporário e o Python copia para o lugar.
+        with tempfile.TemporaryDirectory() as pasta:
+            temporario = Path(pasta) / SAIDA.name
+            self._rodar(executavel, temporario, "--minify")
+            SAIDA.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(temporario, SAIDA)
+        self.stdout.write(self.style.SUCCESS(f"CSS gerado ({SAIDA.stat().st_size / 1024:.0f} KB)."))
+
+    @staticmethod
+    def _rodar(executavel: Path, saida: Path, modo: str) -> None:
+        comando = [str(executavel), "--input", str(ENTRADA), "--output", str(saida), modo]
         # O Tailwind resolve os @source a partir da pasta do arquivo de entrada.
         resultado = subprocess.run(comando, cwd=ENTRADA.parent, check=False)
         if resultado.returncode != 0:
             raise CommandError(f"O Tailwind terminou com erro (código {resultado.returncode}).")
-        self.stdout.write(self.style.SUCCESS(f"CSS gerado ({SAIDA.stat().st_size / 1024:.0f} KB)."))

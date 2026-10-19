@@ -65,8 +65,10 @@ class PartidaSerializer(serializers.ModelSerializer):
     vagas_ocupadas = serializers.IntegerField(read_only=True)
     vagas_linha = serializers.IntegerField(read_only=True)
     precos = serializers.SerializerMethodField(
-        help_text="Preço da vaga de linha no Pix (ou crédito) e no cartão; goleiro é grátis."
+        help_text="Preço da vaga de linha e da de goleiro, no Pix (ou crédito) e no cartão (0.00 = grátis)."
     )
+    origem = serializers.SerializerMethodField(help_text='"arena" (arena parceira) ou "pelada" (pelada de grupo).')
+    organizador = serializers.SerializerMethodField(help_text="Nome público do organizador (só na pelada de grupo).")
     minimo_jogadores = serializers.IntegerField(read_only=True)
     jogadores_confirmados = serializers.IntegerField(read_only=True)
     jogo_confirmado = serializers.BooleanField(read_only=True)
@@ -77,6 +79,9 @@ class PartidaSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "url",
+            "origem",
+            "titulo",
+            "organizador",
             "arena",
             "quadra",
             "data",
@@ -109,8 +114,15 @@ class PartidaSerializer(serializers.ModelSerializer):
         return {
             "linha_pix": str(partida.preco_final_jogador),
             "linha_cartao": str(partida.preco_cartao),
-            "goleiro": "0.00",
+            "goleiro": str(partida.preco_goleiro),
+            "goleiro_cartao": str(partida.preco_goleiro_cartao),
         }
+
+    def get_origem(self, partida: OpenMatch) -> str:
+        return "pelada" if partida.pelada_de_grupo else "arena"
+
+    def get_organizador(self, partida: OpenMatch) -> str | None:
+        return partida.organizador.nome_publico if partida.pelada_de_grupo else None
 
 
 class PartidaDetalheSerializer(PartidaSerializer):
@@ -151,7 +163,7 @@ class InscricaoSerializer(serializers.ModelSerializer):
     metodo_pagamento = serializers.ChoiceField(
         choices=[MetodoPagamento.PIX, MetodoPagamento.CARTAO, MetodoPagamento.CREDITO],
         default=MetodoPagamento.PIX,
-        help_text="Ignorado na vaga de goleiro, que é gratuita.",
+        help_text="Ignorado na vaga de goleiro grátis.",
     )
 
     class Meta:

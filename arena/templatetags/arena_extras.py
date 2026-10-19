@@ -79,6 +79,11 @@ _ICONES = {
         "-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 "
         '3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/>'
     ),
+    "usuario": (
+        '<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 '
+        "7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499"
+        '-1.632Z"/>'
+    ),
     "check": (
         '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 '
         '9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>'
@@ -190,6 +195,7 @@ _CLASSES_BLOCO_CELULA = {
     "avulso": "border-amber-400 bg-amber-400/10",
     "partida": "border-lime-400 bg-lime-400/10",
     "lotada": "border-lime-400 bg-lime-400/15",
+    "pelada": "border-fuchsia-400 bg-fuchsia-400/10",
     "bloqueado": "border-zinc-600 bg-white/5",
 }
 _CLASSES_SELO_CELULA = {
@@ -197,6 +203,7 @@ _CLASSES_SELO_CELULA = {
     "avulso": "bg-amber-400/15 text-amber-300 ring-amber-400/30",
     "partida": "bg-lime-400/15 text-lime-300 ring-lime-400/30",
     "lotada": "bg-lime-400 text-zinc-950 ring-lime-400",
+    "pelada": "bg-fuchsia-400/15 text-fuchsia-300 ring-fuchsia-400/30",
     "bloqueado": "bg-white/10 text-zinc-300 ring-white/15",
     "vago": "bg-white/5 text-zinc-400 ring-white/10",
 }
@@ -205,6 +212,7 @@ _COR_MARCA_CELULA = {
     "avulso": "bg-amber-400",
     "partida": "bg-lime-400",
     "lotada": "bg-lime-400",
+    "pelada": "bg-fuchsia-400",
     "bloqueado": "bg-zinc-500",
     "vago": "border border-dashed border-lime-400/70",
 }

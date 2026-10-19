@@ -36,7 +36,7 @@ from django.test.utils import override_settings
 from django.utils import timezone
 from django.utils.text import slugify
 
-from arena import checkout, jogadores, partidas, razao
+from arena import checkout, jogadores, partidas, peladas, razao
 from arena.gestao import vagas_goleiro_sugeridas
 from arena.models import (
     FAIXAS_DE_NIVEL,
@@ -68,8 +68,12 @@ from arena.models import (
     TimeSlot,
     TipoPiso,
     TipoElogio,
+    VALOR_MINIMO_SAQUE,
+    Saque,
+    TipoChavePix,
     TipoReserva,
     WaitlistEntry,
+    Wallet,
     devolver_vaga_apos_exclusao,
 )
 from arena.validators import digitos_verificadores_cnpj, digitos_verificadores_cpf
@@ -88,6 +92,22 @@ DIAS_DE_HISTORICO = 6
 PARTIDAS_POR_ARENA = 8
 PARTIDAS_PASSADAS_POR_DIA = 2
 PARTIDAS_LOTADAS = 3
+
+# Peladas de grupo (C2C): o nome e quanto o organizador recebe por vaga de linha.
+PELADAS_DE_GRUPO = (
+    ("Pelada da Firma", Decimal("15.00")),
+    ("Racha dos Amigos de Terça", Decimal("18.00")),
+    ("Fut dos Engenheiros", Decimal("20.00")),
+    ("Pelada do Condomínio", Decimal("12.00")),
+    ("Society das Antigas", Decimal("16.00")),
+    ("Bola de Quinta", Decimal("14.00")),
+)
+PELADAS_FUTURAS = 6
+PELADAS_PASSADAS = 3
+# Organizadores de demonstração (índices em JOGADORES), além do Jogador Demo.
+ORGANIZADORES = (0, 10, 16)
+# Goleiro de aluguel: o que o organizador recebe por goleiro nas peladas que pagam.
+VALOR_GOLEIRO_DE_ALUGUEL = Decimal("10.00")
 FAIXAS_DIA_UTIL = ((18, 19), (19, 20), (20, 21), (21, 22), (22, 23))
 FAIXAS_FIM_DE_SEMANA = ((9, 10), (10, 11), (11, 12), (16, 17), (17, 18), (18, 19), (19, 20))
 
@@ -323,6 +343,11 @@ class Command(BaseCommand):
                 with self.relogio.no_passado():
                     self._simular_historico(arenas)
             self._criar_presente(arenas)
+            hoje = timezone.localdate()
+            self._criar_peladas_de_grupo(
+                arenas, [hoje + timedelta(days=n) for n in range(DIAS_DE_AGENDA)], PELADAS_FUTURAS
+            )
+            self._sacar_saldo_de_um_organizador()
             # A data de inscrição acompanha o momento (simulado) em que a vaga foi comprada.
             Booking.objects.update(data_inscricao=F("created_at"))
 
@@ -345,6 +370,8 @@ class Command(BaseCommand):
         TimeSlot.objects.all().delete()
         Court.objects.all().delete()
         Arena.objects.all().delete()
+        Saque.objects.all().delete()
+        Wallet.objects.all().delete()
         CustomUser.objects.all().delete()
         Group.objects.filter(name=NOME_GRUPO_GESTORES).delete()
 
@@ -610,6 +637,8 @@ class Command(BaseCommand):
             if pagas and self.rng.random() < 0.3:
                 checkout.cancelar_inscricao(self.rng.choice(pagas))
 
+        partidas_passadas += self._criar_peladas_de_grupo(arenas, dias, PELADAS_PASSADAS)
+
         # Um jogador que se declarou abaixo do que joga recebe sinais dos colegas.
         alvo_de_sinais = next(
             (j for j in self.jogadores if j.perfil.nivel == 2 and j.perfil.posicao != PosicaoJogador.GOLEIRO), None
@@ -693,6 +722,84 @@ class Command(BaseCommand):
         if len(distantes) > 2:
             partidas.cancelar_partida(distantes[-1], MotivoCancelamento.ARENA)
 
+    # --- Pelada de grupo (C2C) ----------------------------------------------
+
+    def _organizadores(self) -> list[CustomUser]:
+        """Jogador Demo e alguns jogadores que organizam peladas, com a chave Pix cadastrada."""
+        organizadores = [self.demo, *(self.jogadores[indice] for indice in ORGANIZADORES)]
+        for organizador in organizadores:
+            Wallet.objects.get_or_create(
+                usuario=organizador,
+                defaults={"tipo_chave_pix": TipoChavePix.EMAIL, "chave_pix": organizador.email},
+            )
+        return organizadores
+
+    def _criar_peladas_de_grupo(self, arenas: list[Arena], dias: list[date], quantidade: int) -> list[OpenMatch]:
+        """Peladas de mensalistas que vendem as vagas que faltam, com parte das vagas vendidas.
+
+        Usam horários de mensalista ainda sem partida (como faria o organizador no app).
+        """
+        agora = timezone.now()
+        horarios = [
+            horario
+            for horario in TimeSlot.objects.filter(
+                court__arena__in=arenas,
+                data__in=dias,
+                tipo_reserva=TipoReserva.MENSALISTA,
+                status=StatusHorario.CONFIRMADO,
+                partida_aberta__isnull=True,
+            ).select_related("court")
+            if horario.inicio > agora + timedelta(hours=6)
+        ]
+        self.rng.shuffle(horarios)
+        organizadores = self._organizadores()
+        nomes = self.rng.sample(PELADAS_DE_GRUPO, len(PELADAS_DE_GRUPO))
+        criadas = []
+        for indice, horario in enumerate(horarios[:quantidade]):
+            # O Jogador Demo organiza a primeira de cada lote, para a demonstração.
+            organizador = organizadores[0] if indice == 0 else self.rng.choice(organizadores[1:])
+            titulo, valor = nomes[indice % len(nomes)]
+            com_goleiro = indice % 2 == 1
+            pelada = peladas.criar_pelada(
+                organizador,
+                horario.court,
+                horario.data,
+                horario.hora_inicio,
+                horario.hora_fim,
+                titulo=titulo,
+                vagas_linha=self.rng.randint(2, 4),
+                valor_por_vaga=valor,
+                vagas_goleiro=1 if com_goleiro else 0,
+                # Metade dos goleiros é "de aluguel" (pago); a outra metade joga de graça.
+                valor_goleiro=VALOR_GOLEIRO_DE_ALUGUEL if com_goleiro and indice % 4 == 1 else Decimal("0"),
+            )
+            compradores = [j for j in self.jogadores if j.pk != organizador.pk]
+            self.rng.shuffle(compradores)
+            vendidas = self.rng.randint(1, pelada.vagas_linha)
+            linha = [j for j in compradores if jogadores.motivo_inelegivel(pelada, j) is None][:vendidas]
+            for jogador in linha:
+                self._comprar(pelada, jogador)
+            if com_goleiro and self.rng.random() < 0.6:
+                goleiro = next(
+                    (
+                        j
+                        for j in compradores
+                        if j not in linha and jogadores.motivo_inelegivel(pelada, j, Posicao.GOLEIRO) is None
+                    ),
+                    None,
+                )
+                if goleiro is not None:
+                    self._comprar(pelada, goleiro, Posicao.GOLEIRO)
+            criadas.append(pelada)
+        return criadas
+
+    def _sacar_saldo_de_um_organizador(self) -> None:
+        """Um organizador (não o Demo) já sacou o saldo liberado via Pix."""
+        for organizador in self._organizadores()[1:]:
+            if razao.saldo_do_organizador(organizador).disponivel >= VALOR_MINIMO_SAQUE:
+                razao.solicitar_saque(organizador)
+                return
+
     # --- Saída ---------------------------------------------------------------
 
     def _imprimir_resumo(self) -> None:
@@ -705,10 +812,12 @@ class Command(BaseCommand):
             ("  - lotadas", OpenMatch.objects.filter(status=StatusPartida.LOTADA).count()),
             ("  - finalizadas", OpenMatch.objects.filter(status=StatusPartida.FINALIZADA).count()),
             ("  - canceladas", OpenMatch.objects.filter(status=StatusPartida.CANCELADA).count()),
+            ("  - peladas de grupo", OpenMatch.objects.peladas_de_grupo().count()),
             ("Inscrições", Booking.objects.count()),
             ("Pagamentos", Payment.objects.count()),
             ("Lançamentos no razão", LedgerEntry.objects.count()),
             ("Repasses", Payout.objects.count()),
+            ("Saques via Pix", Saque.objects.count()),
             ("Usuários", CustomUser.objects.count()),
         )
         for rotulo, total in contagens:

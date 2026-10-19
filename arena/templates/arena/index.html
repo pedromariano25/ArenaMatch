@@ -11,7 +11,7 @@
   <h1 class="titulo mt-4 text-4xl leading-[0.95] text-white sm:text-6xl">
     {% if perfil %}Bora jogar, {{ perfil.nome_exibicao }}?{% else %}Bora jogar hoje?{% endif %}
   </h1>
-  <p class="mt-3 max-w-xl text-zinc-400">Escolha o jogo, pague pelo app e entre em campo. Goleiro não paga.</p>
+  <p class="mt-3 max-w-xl text-zinc-400">Jogos de arenas parceiras e peladas de grupo precisando completar o time. Escolha, pague pelo app e entre em campo.</p>
 </section>
 
 <section id="partidas" class="sticky top-16 z-30 mt-6 border-y border-white/5 bg-zinc-950/80 backdrop-blur-xl">
@@ -29,6 +29,10 @@
     {% else %}
       <button type="button" data-perto class="shrink-0 rounded-full bg-white/5 px-4 py-2 text-zinc-300 transition hover:bg-white/10">Perto de mim</button>
     {% endif %}
+    <span class="mx-1 w-px shrink-0 bg-white/10" aria-hidden="true"></span>
+    {% for valor, rotulo in filtro.fields.origem.choices %}{% if valor %}
+      <a href="{% if filtro.origem.value == valor %}{% url_com origem='' %}{% else %}{% url_com origem=valor %}{% endif %}" class="shrink-0 rounded-full px-4 py-2 transition {% if filtro.origem.value == valor %}{% if valor == 'pelada' %}bg-fuchsia-400{% else %}bg-lime-400{% endif %} text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
+    {% endif %}{% endfor %}
     <span class="mx-1 w-px shrink-0 bg-white/10" aria-hidden="true"></span>
     {% for valor, rotulo in filtro.fields.piso.choices %}{% if valor %}
       <a href="{% if filtro.piso.value == valor %}{% url_com piso='' %}{% else %}{% url_com piso=valor %}{% endif %}" class="shrink-0 rounded-full px-4 py-2 transition {% if filtro.piso.value == valor %}bg-white text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
@@ -80,7 +84,7 @@
       <legend class="text-sm font-semibold text-zinc-300">Vaga</legend>
       <div class="mt-2 grid grid-cols-2 gap-2">
         <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10"><input type="radio" name="posicao" value="linha" checked class="accent-lime-400"> Linha</label>
-        <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold has-[:checked]:border-cyan-400 has-[:checked]:bg-cyan-400/10" data-opcao-goleiro><input type="radio" name="posicao" value="goleiro" class="accent-cyan-400"> Goleiro · grátis</label>
+        <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold has-[:checked]:border-cyan-400 has-[:checked]:bg-cyan-400/10" data-opcao-goleiro><input type="radio" name="posicao" value="goleiro" class="accent-cyan-400"> Goleiro · <span data-goleiro-rotulo>grátis</span></label>
       </div>
     </fieldset>
 
@@ -128,13 +132,20 @@
     const metodos = dialogo.querySelector("[data-metodos]");
     const opcaoGoleiro = dialogo.querySelector("[data-opcao-goleiro]");
     const opcaoCredito = dialogo.querySelector("[data-opcao-credito]");
-    const atualizar = () => { metodos.hidden = form.posicao.value === "goleiro"; };
+    let precos = {};
+    const atualizar = () => {
+      const goleiro = form.posicao.value === "goleiro";
+      // Goleiro grátis não escolhe pagamento; goleiro pago vê o preço da vaga de goleiro.
+      metodos.hidden = goleiro && !precos.goleiroPix;
+      dialogo.querySelector("[data-pix]").textContent = goleiro && precos.goleiroPix ? precos.goleiroPix : precos.pix;
+      dialogo.querySelector("[data-cartao]").textContent = goleiro && precos.goleiroPix ? precos.goleiroCartao : precos.cartao;
+    };
     document.querySelectorAll("[data-checkout]").forEach((botao) => {
       botao.addEventListener("click", () => {
         form.action = botao.dataset.checkout;
         dialogo.querySelector("[data-titulo]").textContent = botao.dataset.titulo;
-        dialogo.querySelector("[data-pix]").textContent = botao.dataset.pix;
-        dialogo.querySelector("[data-cartao]").textContent = botao.dataset.cartao;
+        precos = { ...botao.dataset };
+        dialogo.querySelector("[data-goleiro-rotulo]").textContent = botao.dataset.goleiroPix || "grátis";
         opcaoGoleiro.hidden = !botao.dataset.goleiro;
         opcaoCredito.hidden = parseFloat(opcaoCredito.dataset.saldo) < parseFloat(botao.dataset.preco);
         form.posicao.value = "linha";

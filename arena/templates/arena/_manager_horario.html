@@ -17,7 +17,7 @@ Espera no contexto: celula, quadra, padrao e dia.
       <span class="flex items-center gap-1 text-xs font-black text-lime-300">{% icone "mais" "size-3.5" %} Publicar</span>
     </button>
   </form>
-{% elif celula.partida %}
+{% elif celula.partida and celula.tipo != "pelada" %}
   {% with partida=celula.partida %}
   <div class="flex h-full min-h-24 flex-col justify-between gap-3 rounded-2xl p-3 ring-1 ring-inset {% if celula.tipo == 'lotada' %}bg-lime-400 text-zinc-950 ring-lime-400{% else %}bg-lime-400/10 ring-lime-400/30{% endif %}">
     <span class="titulo text-xl leading-none tabular-nums {% if celula.tipo != 'lotada' %}text-white{% endif %}">{{ celula.inicio|time:"H:i" }}</span>
@@ -44,5 +44,6 @@ Espera no contexto: celula, quadra, padrao e dia.
   <div class="flex h-full min-h-24 flex-col justify-between gap-3 rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/5 ring-inset">
     <span class="titulo text-xl leading-none text-zinc-500 tabular-nums">{{ celula.inicio|time:"H:i" }}</span>
     <span class="selo w-fit {{ celula.tipo|classes_selo }}">{{ celula.rotulo }}</span>
+    {% if celula.tipo == "pelada" %}<span class="-mt-2 truncate text-[11px] text-zinc-500">{{ celula.partida.organizador.nome_publico }} vende {{ celula.partida.vagas_totais }} vaga{{ celula.partida.vagas_totais|pluralize }}</span>{% endif %}
   </div>
 {% endif %}

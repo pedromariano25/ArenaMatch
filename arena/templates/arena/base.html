@@ -20,7 +20,10 @@
         <a href="{% url 'arena:vitrine' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Partidas</a>
         {% if user.is_authenticated %}
           <a href="{% url 'arena:minhas_inscricoes' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Minhas partidas</a>
-          {% if user.is_player %}<a href="{% url 'arena:perfil' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Perfil</a>{% endif %}
+          {% if user.is_player %}
+            <a href="{% url 'arena:organizar' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Organizar</a>
+            <a href="{% url 'arena:perfil' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Perfil</a>
+          {% endif %}
         {% endif %}
       </div>
       <div class="flex items-center gap-2 text-sm font-semibold">
@@ -66,12 +69,13 @@
   </footer>
 
   <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-zinc-950/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden" aria-label="Navegação do app">
-    <div class="mx-auto grid max-w-md grid-cols-3 text-[11px] font-semibold">
-      {% url 'arena:vitrine' as url_feed %}{% url 'arena:minhas_inscricoes' as url_minhas %}{% url 'arena:perfil' as url_perfil %}
+    <div class="mx-auto grid max-w-md {% if user.is_authenticated %}grid-cols-4{% else %}grid-cols-3{% endif %} text-[11px] font-semibold">
+      {% url 'arena:vitrine' as url_feed %}{% url 'arena:minhas_inscricoes' as url_minhas %}{% url 'arena:perfil' as url_perfil %}{% url 'arena:organizar' as url_organizar %}
       <a href="{{ url_feed }}" class="flex flex-col items-center gap-1 py-2.5 {% if request.path == url_feed %}text-lime-400{% else %}text-zinc-400{% endif %}">{% icone "bola" "size-6" %} Jogos</a>
       {% if user.is_authenticated %}
         <a href="{{ url_minhas }}" class="flex flex-col items-center gap-1 py-2.5 {% if request.path == url_minhas %}text-lime-400{% else %}text-zinc-400{% endif %}">{% icone "ticket" "size-6" %} Minhas</a>
-        <a href="{{ url_perfil }}" class="flex flex-col items-center gap-1 py-2.5 {% if url_perfil in request.path %}text-lime-400{% else %}text-zinc-400{% endif %}">{% icone "jogadores" "size-6" %} Perfil</a>
+        <a href="{{ url_organizar }}" class="flex flex-col items-center gap-1 py-2.5 {% if url_organizar in request.path %}text-fuchsia-400{% else %}text-zinc-400{% endif %}">{% icone "jogadores" "size-6" %} Organizar</a>
+        <a href="{{ url_perfil }}" class="flex flex-col items-center gap-1 py-2.5 {% if url_perfil in request.path %}text-lime-400{% else %}text-zinc-400{% endif %}">{% icone "usuario" "size-6" %} Perfil</a>
       {% else %}
         <a href="{% url 'inicio' %}" class="flex flex-col items-center gap-1 py-2.5 text-zinc-400">{% icone "info" "size-6" %} Sobre</a>
         <a href="{% url 'arena:entrar_telefone' %}" class="flex flex-col items-center gap-1 py-2.5 text-zinc-400">{% icone "seta" "size-6" %} Entrar</a>

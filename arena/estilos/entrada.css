@@ -63,6 +63,8 @@
   /* Campo de formulário escuro (aplicado pelo filtro estilizar_escuro). */
   .campo {
     @apply block w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-500 focus:border-lime-400 focus:ring-2 focus:ring-lime-400/30 focus:outline-none;
+    /* Calendário e relógio nativos (data e hora) no tema escuro. */
+    color-scheme: dark;
   }
   .campo-erro {
     @apply border-rose-400/60;

@@ -49,7 +49,10 @@ class ApiPartidasTest(APITestCase):
         self.assertEqual(primeira["id"], str(self.partida.pk))
         self.assertEqual((primeira["hora_inicio"], primeira["vagas_disponiveis"]), ("19:00", 2))
         self.assertEqual(primeira["arena"]["nome"], self.quadra.arena.nome)
-        self.assertEqual(primeira["precos"], {"linha_pix": "28.75", "linha_cartao": "30.19", "goleiro": "0.00"})
+        self.assertEqual(
+            primeira["precos"],
+            {"linha_pix": "28.75", "linha_cartao": "30.19", "goleiro": "0.00", "goleiro_cartao": "0.00"},
+        )
 
     def test_filtros(self):
         url = reverse("api:partidas")

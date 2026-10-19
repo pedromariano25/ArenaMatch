@@ -56,7 +56,7 @@ def iniciar_checkout(
         ValidationError: partida lotada ou indisponível, crédito insuficiente,
             pagamento recusado etc.
     """
-    if posicao == Posicao.GOLEIRO:
+    if posicao == Posicao.GOLEIRO and partida.goleiro_gratis:
         metodo = MetodoPagamento.GRATUITO
     elif metodo not in METODOS_PAGOS:
         raise ValidationError("Escolha Pix, cartão ou crédito para pagar a vaga.")
@@ -100,7 +100,7 @@ def iniciar_checkout(
 def _confirmar_sem_gateway(
     partida: OpenMatch, jogador: AbstractBaseUser, posicao: str, metodo: str
 ) -> Booking:
-    """Goleiro (grátis) ou pagamento com crédito: a vaga é confirmada na hora."""
+    """Goleiro grátis ou pagamento com crédito: a vaga é confirmada na hora."""
     inscricao = Booking(
         open_match=partida,
         player=jogador,

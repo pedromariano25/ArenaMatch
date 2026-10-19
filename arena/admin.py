@@ -44,6 +44,7 @@ from .models import (
     Payment,
     Payout,
     PlayerProfile,
+    Saque,
     SinalNivel,
     StatusHorario,
     StatusInscricao,
@@ -52,6 +53,7 @@ from .models import (
     StatusRepasse,
     TimeSlot,
     WaitlistEntry,
+    Wallet,
 )
 
 admin.site.site_header = "ArenaMatch · Back-office"
@@ -557,6 +559,7 @@ class OpenMatchAdmin(EscopoGestorAdmin):
     list_display = (
         "partida",
         "arena",
+        "origem",
         "nivel_competitividade",
         "ocupacao",
         "preco",
@@ -566,10 +569,11 @@ class OpenMatchAdmin(EscopoGestorAdmin):
         PeriodoPartidaFilter,
         "status",
         "nivel_competitividade",
+        ("organizador", admin.EmptyFieldListFilter),
         ("time_slot__court__arena", admin.RelatedOnlyFieldListFilter),
     )
-    search_fields = ("time_slot__court__nome_ou_numero", "time_slot__court__arena__nome")
-    list_select_related = ("time_slot__court__arena",)
+    search_fields = ("time_slot__court__nome_ou_numero", "time_slot__court__arena__nome", "titulo")
+    list_select_related = ("time_slot__court__arena", "organizador")
     ordering = ("time_slot__data", "time_slot__hora_inicio")
     readonly_fields = (
         "status",
@@ -586,6 +590,7 @@ class OpenMatchAdmin(EscopoGestorAdmin):
     formfield_overrides = {models.DecimalField: {"localize": True}}
     fieldsets = (
         (None, {"fields": ("time_slot", "status", "nivel_competitividade")}),
+        ("Pelada de grupo (C2C)", {"fields": ("organizador", "titulo"), "classes": ("collapse",)}),
         (
             "Vagas e preço",
             {
@@ -593,6 +598,7 @@ class OpenMatchAdmin(EscopoGestorAdmin):
                     ("vagas_totais", "vagas_goleiro", "vagas_disponiveis"),
                     "ocupacao",
                     "valor_total_aluguel",
+                    "valor_vaga_goleiro",
                     ("taxa_plataforma_percentual", "taxa_minima"),
                 )
             },
@@ -642,6 +648,12 @@ class OpenMatchAdmin(EscopoGestorAdmin):
     @admin.display(description="arena", ordering="time_slot__court__arena__nome")
     def arena(self, obj: OpenMatch) -> Arena:
         return obj.time_slot.court.arena
+
+    @admin.display(description="origem", ordering="organizador")
+    def origem(self, obj: OpenMatch) -> str:
+        if obj.organizador_id is None:
+            return "Arena"
+        return f"Pelada de {obj.organizador.nome_publico}"
 
     @admin.display(description="ocupação", ordering="vagas_disponiveis")
     def ocupacao(self, obj: OpenMatch) -> SafeString | str:
@@ -837,6 +849,52 @@ class LedgerEntryAdmin(SomenteLeituraAdmin):
     @admin.display(description="disponível em", ordering="disponivel_em")
     def disponivel(self, obj: LedgerEntry) -> str:
         return _data_hora(obj.disponivel_em)
+
+
+@admin.register(Wallet)
+class WalletAdmin(admin.ModelAdmin):
+    """Carteiras dos usuários: a chave Pix e os saldos (vindos do razão)."""
+
+    list_display = ("usuario", "tipo_chave_pix", "chave_pix", "saldo_organizador", "credito")
+    search_fields = ("usuario__username", "usuario__first_name", "usuario__last_name", "chave_pix")
+    list_select_related = ("usuario",)
+    readonly_fields = ("saldo_organizador", "credito", "created_at", "updated_at")
+
+    @admin.display(description="saldo de organizador")
+    def saldo_organizador(self, obj: Wallet) -> str:
+        saldo = razao.saldo_do_organizador(obj.usuario)
+        return f"{formatar_brl(saldo.disponivel)} disponível · {formatar_brl(saldo.a_liberar)} a liberar"
+
+    @admin.display(description="crédito de jogador")
+    def credito(self, obj: Wallet) -> str:
+        return formatar_brl(razao.saldo_do_jogador(obj.usuario))
+
+
+@admin.register(Saque)
+class SaqueAdmin(admin.ModelAdmin):
+    """Saques via Pix dos organizadores (só consulta)."""
+
+    list_display = ("criado", "wallet", "valor_formatado", "chave_pix", "status", "referencia")
+    list_filter = ("status",)
+    list_select_related = ("wallet__usuario",)
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Saque | None = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: Saque | None = None) -> bool:
+        return False
+
+    @admin.display(description="criado em", ordering="created_at")
+    def criado(self, obj: Saque) -> str:
+        return _data_hora(obj.created_at)
+
+    @admin.display(description="valor", ordering="valor")
+    def valor_formatado(self, obj: Saque) -> str:
+        return formatar_brl(obj.valor)
 
 
 @admin.register(Payout)

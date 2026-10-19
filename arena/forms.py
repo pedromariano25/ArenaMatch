@@ -11,6 +11,9 @@ from django.utils import timezone
 
 from .jogadores import EXPERIENCIAS, FREQUENCIAS, calcular_nivel
 from .models import (
+    MEIA_NOITE,
+    TAXA_C2C_MINIMA,
+    TAXA_C2C_PERCENTUAL,
     Arena,
     Court,
     CustomUser,
@@ -20,8 +23,11 @@ from .models import (
     PercepcaoNivel,
     Posicao,
     PosicaoJogador,
+    TipoChavePix,
     TipoPiso,
+    Wallet,
 )
+from .validators import validar_cpf
 
 
 class ConverterPartidaForm(forms.Form):
@@ -102,6 +108,10 @@ class FiltroVitrineForm(forms.Form):
     )
     piso = forms.ChoiceField(required=False, choices=[("", "Todos os pisos"), *TipoPiso.choices])
     arena = forms.ChoiceField(required=False)
+    origem = forms.ChoiceField(
+        required=False,
+        choices=[("", "Todas"), ("arena", "Arenas parceiras"), ("pelada", "Peladas de grupo")],
+    )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -135,6 +145,7 @@ class FiltroVitrineForm(forms.Form):
             "nivel": dados["nivel"] or None,
             "piso": dados["piso"] or None,
             "arena": dados["arena"] or None,
+            "origem": dados["origem"] or None,
             "de": de,
             "ate": ate,
         }
@@ -250,6 +261,7 @@ class CheckoutForm(forms.Form):
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
+        self.partida = partida
         posicoes = posicoes or [Posicao.LINHA, Posicao.GOLEIRO]
         if not partida.vagas_goleiro:
             posicoes = [posicao for posicao in posicoes if posicao != Posicao.GOLEIRO]
@@ -262,7 +274,7 @@ class CheckoutForm(forms.Form):
 
     def clean(self) -> dict[str, Any]:
         dados = super().clean()
-        if dados.get("posicao") == Posicao.GOLEIRO:
+        if dados.get("posicao") == Posicao.GOLEIRO and self.partida.goleiro_gratis:
             dados["metodo"] = MetodoPagamento.GRATUITO
         elif not dados.get("metodo"):
             self.add_error("metodo", "Escolha a forma de pagamento.")
@@ -355,3 +367,107 @@ class CodigoAcessoForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"autocomplete": "name"}),
     )
+
+
+# --- Pelada de grupo (C2C) ----------------------------------------------------------
+
+
+class QuadraParceiraField(forms.ModelChoiceField):
+    def label_from_instance(self, quadra: Court) -> str:
+        return f"{quadra.arena.nome} · {quadra.nome_ou_numero} ({quadra.get_tipo_piso_display()})"
+
+
+class NovaPeladaForm(forms.Form):
+    """O organizador abre as vagas que faltam na pelada do grupo."""
+
+    titulo = forms.CharField(
+        label="Nome da pelada",
+        max_length=80,
+        widget=forms.TextInput(attrs={"placeholder": "Ex.: Pelada da Firma"}),
+    )
+    quadra = QuadraParceiraField(
+        label="Onde vocês jogam",
+        queryset=Court.objects.select_related("arena").order_by("arena__nome", "nome_ou_numero"),
+        empty_label="Escolha a arena e a quadra",
+        help_text="Só arenas parceiras do ArenaMatch, por enquanto.",
+    )
+    dia = forms.DateField(label="Dia", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    hora_inicio = forms.TimeField(label="Começa", widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"))
+    hora_fim = forms.TimeField(label="Termina", widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"))
+    vagas_linha = forms.IntegerField(label="Vagas que faltam (linha)", min_value=1, max_value=20, initial=2)
+    valor_por_vaga = forms.DecimalField(
+        label="Você recebe por vaga (R$)",
+        min_value=Decimal("1.00"),
+        max_value=Decimal("500.00"),
+        max_digits=6,
+        decimal_places=2,
+        initial=Decimal("15.00"),
+        localize=True,
+    )
+    vagas_goleiro = forms.IntegerField(label="Vagas de goleiro", min_value=0, max_value=2, initial=0)
+    valor_goleiro = forms.DecimalField(
+        label="Você recebe por goleiro (R$)",
+        min_value=Decimal("0"),
+        max_value=Decimal("500.00"),
+        max_digits=6,
+        decimal_places=2,
+        initial=Decimal("0"),
+        localize=True,
+        help_text="Zero: o goleiro joga de graça (o grupo banca).",
+    )
+    nivel = forms.ChoiceField(
+        label="Nível do jogo", choices=NivelCompetitividade.choices, initial=NivelCompetitividade.ABERTA
+    )
+
+    def clean(self) -> dict[str, Any]:
+        dados = super().clean()
+        inicio, fim = dados.get("hora_inicio"), dados.get("hora_fim")
+        if inicio and fim and fim <= inicio and fim != MEIA_NOITE:
+            self.add_error("hora_fim", "O horário de término precisa ser depois do início.")
+        return dados
+
+    @staticmethod
+    def taxas() -> dict[str, Decimal]:
+        """Contrato da pelada de grupo, para a prévia do preço na tela."""
+        return {"percentual": TAXA_C2C_PERCENTUAL, "minima": TAXA_C2C_MINIMA}
+
+
+class ChavePixForm(forms.ModelForm):
+    """Chave Pix que recebe os saques do organizador."""
+
+    class Meta:
+        model = Wallet
+        fields = ("tipo_chave_pix", "chave_pix")
+        labels = {"tipo_chave_pix": "Tipo da chave", "chave_pix": "Chave Pix"}
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["tipo_chave_pix"].required = True
+        self.fields["chave_pix"].required = True
+
+    def clean(self) -> dict[str, Any]:
+        dados = super().clean()
+        tipo, chave = dados.get("tipo_chave_pix"), (dados.get("chave_pix") or "").strip()
+        if not tipo or not chave:
+            return dados
+        digitos = "".join(filter(str.isdigit, chave))
+        if tipo == TipoChavePix.CPF:
+            try:
+                validar_cpf(digitos)
+            except forms.ValidationError as erro:
+                self.add_error("chave_pix", erro)
+            chave = digitos
+        elif tipo == TipoChavePix.CELULAR:
+            if len(digitos.removeprefix("55")) not in (10, 11):
+                self.add_error("chave_pix", "Informe o celular com DDD.")
+            chave = "+55" + digitos.removeprefix("55")
+        elif tipo == TipoChavePix.EMAIL:
+            try:
+                forms.EmailField().clean(chave)
+            except forms.ValidationError:
+                self.add_error("chave_pix", "Informe um e-mail válido.")
+            chave = chave.lower()
+        elif len(chave.replace("-", "")) != 32:
+            self.add_error("chave_pix", "A chave aleatória tem 32 caracteres (letras e números).")
+        dados["chave_pix"] = chave
+        return dados

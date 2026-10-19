@@ -60,6 +60,7 @@ class TipoCelula(StrEnum):
     BLOQUEADO = "bloqueado"
     PARTIDA = "partida"
     LOTADA = "lotada"
+    PELADA = "pelada"
     VAGO = "vago"
     ENCERRADO = "encerrado"
 
@@ -70,6 +71,7 @@ ROTULOS_CELULA = {
     TipoCelula.BLOQUEADO: "Bloqueado",
     TipoCelula.PARTIDA: "Partida aberta",
     TipoCelula.LOTADA: "Partida lotada",
+    TipoCelula.PELADA: "Pelada de grupo",
     TipoCelula.VAGO: "Livre",
     TipoCelula.ENCERRADO: "Encerrado",
 }
@@ -246,6 +248,9 @@ def _celula(
         return Celula(quadra, dia, inicio, fim, livre)
 
     partida = _partida_do_horario(horario)
+    if partida is not None and partida.status != StatusPartida.CANCELADA and partida.organizador_id:
+        # Mensalista que vende as vagas que faltam no próprio grupo (o dinheiro é do grupo).
+        return Celula(quadra, dia, inicio, fim, TipoCelula.PELADA, horario, partida)
     if partida is not None and partida.status != StatusPartida.CANCELADA:
         tipo = TipoCelula.LOTADA if partida.status == StatusPartida.LOTADA else TipoCelula.PARTIDA
         return Celula(quadra, dia, inicio, fim, tipo, horario, partida, garantido.get(partida.pk, ZERO))
@@ -262,7 +267,7 @@ def grade_da_quadra(quadra: Court, dias: list[date]) -> list[LinhaGrade]:
     """
     horarios = list(
         TimeSlot.objects.filter(court=quadra, data__range=(dias[0], dias[-1])).select_related(
-            "partida_aberta"
+            "partida_aberta__organizador"
         )
     )
     por_posicao = {(h.data, h.hora_inicio.hour): h for h in horarios}
@@ -342,6 +347,7 @@ def indicadores_dashboard(arena: Arena, grades: dict[Court, list[LinhaGrade]]) -
         open_match__time_slot__court__arena=arena,
         open_match__time_slot__data__year=hoje.year,
         open_match__time_slot__data__month=hoje.month,
+        open_match__organizador__isnull=True,
         status=StatusInscricao.CONFIRMADA,
         posicao=Posicao.LINHA,
     )

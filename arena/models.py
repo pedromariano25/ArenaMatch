@@ -55,6 +55,12 @@ DIAS_SUSPENSAO_GOLEIRO = 14
 DIAS_PARA_AVALIAR = 7
 # Sinais de colegas diferentes (na mesma direção) que ajustam o nível de um jogador.
 SINAIS_PARA_AJUSTAR_NIVEL = 3
+# Pelada de grupo (C2C): taxa da plataforma sobre o valor que o organizador recebe
+# por vaga, com mínimo por vaga de linha. Ex.: R$ 15 ao organizador + R$ 5 = R$ 20.
+TAXA_C2C_PERCENTUAL = Decimal("20.00")
+TAXA_C2C_MINIMA = Decimal("5.00")
+# Menor saque via Pix da carteira do organizador.
+VALOR_MINIMO_SAQUE = Decimal("10.00")
 
 
 def arredondar(valor: Decimal) -> Decimal:
@@ -180,6 +186,7 @@ class MotivoCancelamento(models.TextChoices):
 
     ARENA = "arena", "Cancelada pela arena"
     QUORUM = "quorum", "Mínimo de jogadores não atingido"
+    ORGANIZADOR = "organizador", "Cancelada pelo organizador"
 
 
 class Posicao(models.TextChoices):
@@ -225,6 +232,7 @@ class TipoConta(models.TextChoices):
     ARENA = "arena", "Arena"
     PLATAFORMA = "plataforma", "Plataforma"
     JOGADOR = "jogador", "Crédito do jogador"
+    ORGANIZADOR = "organizador", "Saldo do organizador"
 
 
 class TipoLancamento(models.TextChoices):
@@ -239,6 +247,16 @@ class TipoLancamento(models.TextChoices):
     USO_CREDITO = "uso_credito", "Uso de crédito"
     AJUSTE_FECHAMENTO = "ajuste_fechamento", "Ajuste de fechamento"
     REPASSE = "repasse", "Repasse à arena"
+    SAQUE = "saque", "Saque via Pix"
+
+
+class TipoChavePix(models.TextChoices):
+    """Tipo da chave Pix que recebe os saques do organizador."""
+
+    CPF = "cpf", "CPF"
+    CELULAR = "celular", "Celular"
+    EMAIL = "email", "E-mail"
+    ALEATORIA = "aleatoria", "Chave aleatória"
 
 
 class StatusRepasse(models.TextChoices):
@@ -613,7 +631,7 @@ class TimeSlot(ValidatedModel):
         if self._state.adding or self.status in STATUS_HORARIO_LIVRE:
             return
         tem_partida_ativa = OpenMatch.objects.filter(
-            time_slot_id=self.pk, status__in=STATUS_PARTIDA_ATIVA
+            time_slot_id=self.pk, status__in=STATUS_PARTIDA_ATIVA, organizador__isnull=True
         ).exists()
         if tem_partida_ativa:
             raise ValidationError(
@@ -630,8 +648,8 @@ class OpenMatchQuerySet(models.QuerySet):
     """Consultas de partidas compartilhadas pela vitrine web, pela API e pelo admin."""
 
     def com_relacionados(self) -> Self:
-        """Carrega horário, quadra e arena na mesma consulta (evita N+1)."""
-        return self.select_related("time_slot__court__arena")
+        """Carrega horário, quadra, arena e organizador na mesma consulta (evita N+1)."""
+        return self.select_related("time_slot__court__arena", "organizador")
 
     def com_confirmados(self) -> Self:
         """Anota ``num_confirmados``: jogadores com vaga paga que seguem na partida."""
@@ -678,8 +696,12 @@ class OpenMatchQuerySet(models.QuerySet):
         arena: str | None = None,
         de: date | None = None,
         ate: date | None = None,
+        origem: str | None = None,
     ) -> Self:
-        """Aplica os filtros opcionais da vitrine (``arena`` é o slug da arena)."""
+        """Aplica os filtros opcionais da vitrine (``arena`` é o slug da arena).
+
+        ``origem`` separa as partidas das arenas ("arena") das peladas de grupo ("pelada").
+        """
         filtros: dict[str, Any] = {
             "nivel_competitividade": nivel,
             "time_slot__court__tipo_piso": piso,
@@ -687,7 +709,18 @@ class OpenMatchQuerySet(models.QuerySet):
             "time_slot__data__gte": de,
             "time_slot__data__lte": ate,
         }
-        return self.filter(**{campo: valor for campo, valor in filtros.items() if valor})
+        partidas = self.filter(**{campo: valor for campo, valor in filtros.items() if valor})
+        if origem == "arena":
+            return partidas.de_arenas()
+        if origem == "pelada":
+            return partidas.peladas_de_grupo()
+        return partidas
+
+    def de_arenas(self) -> Self:
+        return self.filter(organizador__isnull=True)
+
+    def peladas_de_grupo(self) -> Self:
+        return self.filter(organizador__isnull=False)
 
 
 class OpenMatch(ValidatedModel):
@@ -787,6 +820,26 @@ class OpenMatch(ValidatedModel):
         editable=False,
     )
     cancelada_em = models.DateTimeField("cancelada em", null=True, blank=True, editable=False)
+    organizador = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="peladas_organizadas",
+        verbose_name="organizador",
+        help_text="Jogador que abriu as vagas da própria pelada (C2C). Em branco: partida da arena.",
+    )
+    titulo = models.CharField(
+        "nome da pelada", max_length=80, blank=True, help_text='Ex.: "Pelada da Firma". Só nas peladas de grupo.'
+    )
+    valor_vaga_goleiro = models.DecimalField(
+        "valor da vaga de goleiro (R$)",
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Quanto o organizador recebe por goleiro. Zero: goleiro grátis.",
+    )
 
     objects = OpenMatchQuerySet.as_manager()
 
@@ -885,13 +938,53 @@ class OpenMatch(ValidatedModel):
         """Preço da vaga de linha no cartão, com o acréscimo que cobre a tarifa."""
         return self.preco_final_jogador + calcular_acrescimo_cartao(self.preco_final_jogador)
 
+    @property
+    def goleiro_gratis(self) -> bool:
+        return not self.valor_vaga_goleiro
+
+    @property
+    def valor_taxa_goleiro(self) -> Decimal:
+        """Taxa da vaga de goleiro paga: só o percentual, sem o mínimo (vaga subsidiada)."""
+        if self.goleiro_gratis:
+            return ZERO
+        percentual = (
+            TAXA_PLATAFORMA_PADRAO
+            if self.taxa_plataforma_percentual is None
+            else self.taxa_plataforma_percentual
+        )
+        return arredondar(self.valor_vaga_goleiro * percentual / 100)
+
+    @property
+    def preco_goleiro(self) -> Decimal:
+        """Preço da vaga de goleiro no Pix (zero quando o goleiro não paga)."""
+        return self.valor_vaga_goleiro + self.valor_taxa_goleiro
+
+    @property
+    def preco_goleiro_cartao(self) -> Decimal:
+        return self.preco_goleiro + calcular_acrescimo_cartao(self.preco_goleiro)
+
     def valores_da_vaga(self, posicao: str, metodo: str) -> tuple[Decimal, Decimal, Decimal]:
-        """Parte da quadra, taxa de serviço e acréscimo do cartão de uma vaga."""
+        """Parte do organizador (ou da quadra), taxa de serviço e acréscimo do cartão de uma vaga."""
         if posicao == Posicao.GOLEIRO:
-            return ZERO, ZERO, ZERO
-        vaga, taxa = self.preco_vaga_base, self.valor_taxa_vaga
+            if self.goleiro_gratis:
+                return ZERO, ZERO, ZERO
+            vaga, taxa = self.valor_vaga_goleiro, self.valor_taxa_goleiro
+        else:
+            vaga, taxa = self.preco_vaga_base, self.valor_taxa_vaga
         acrescimo = calcular_acrescimo_cartao(vaga + taxa) if metodo == MetodoPagamento.CARTAO else ZERO
         return vaga, taxa, acrescimo
+
+    # --- Pelada de grupo (C2C) ----------------------------------------------------
+
+    @property
+    def pelada_de_grupo(self) -> bool:
+        """Vagas abertas por um jogador (organizador), e não pela arena."""
+        return self.organizador_id is not None
+
+    @property
+    def nome_exibido(self) -> str:
+        """Nome no feed: o da pelada de grupo ou o da arena."""
+        return self.titulo or self.time_slot.court.arena.nome
 
     @property
     def ajuste_repasse_fechamento(self) -> Decimal:
@@ -1029,12 +1122,22 @@ class OpenMatch(ValidatedModel):
         self.save(update_fields=["vagas_disponiveis", "status", "updated_at"])
 
     def _validar_horario_livre(self) -> None:
-        """Partidas ativas exigem horário Ocioso ou Cancelado. Partidas novas, horário futuro."""
+        """Partidas ativas exigem horário Ocioso ou Cancelado. Partidas novas, horário futuro.
+
+        A pelada de grupo é a exceção: ela acontece no horário de mensalista que o
+        grupo já reservou com a arena (confirmado).
+        """
         try:
             horario = self.time_slot
         except ObjectDoesNotExist:
             return  # FK ausente ou inválida: o erro já foi reportado por clean_fields().
-        if horario.status not in STATUS_HORARIO_LIVRE:
+        if self.organizador_id is not None:
+            if horario.tipo_reserva != TipoReserva.MENSALISTA or horario.status != StatusHorario.CONFIRMADO:
+                raise ValidationError(
+                    "A pelada de grupo precisa ficar num horário de mensalista confirmado.",
+                    code="horario_indisponivel",
+                )
+        elif horario.status not in STATUS_HORARIO_LIVRE:
             raise ValidationError(
                 "Só é possível abrir partidas em horários Ocioso ou Cancelado. "
                 f"Este horário está {horario.get_status_display()}.",
@@ -1324,7 +1427,7 @@ class Booking(ValidatedModel):
 
     def _congelar_valores(self) -> None:
         """Copia os valores da vaga e define os prazos iniciais da inscrição."""
-        if self.posicao == Posicao.GOLEIRO:
+        if self.posicao == Posicao.GOLEIRO and self.open_match.goleiro_gratis:
             self.metodo_pagamento = MetodoPagamento.GRATUITO
         self.valor_vaga, self.valor_taxa, self.valor_acrescimo = self.open_match.valores_da_vaga(
             self.posicao, self.metodo_pagamento
@@ -1644,6 +1747,11 @@ class LedgerAccount(BaseModel):
                 name="carteira_unica_por_jogador",
             ),
             models.UniqueConstraint(
+                fields=["jogador"],
+                condition=Q(tipo=TipoConta.ORGANIZADOR),
+                name="carteira_unica_por_organizador",
+            ),
+            models.UniqueConstraint(
                 fields=["tipo"],
                 condition=Q(tipo=TipoConta.PLATAFORMA),
                 name="carteira_unica_da_plataforma",
@@ -1651,7 +1759,7 @@ class LedgerAccount(BaseModel):
             models.CheckConstraint(
                 condition=(
                     Q(tipo=TipoConta.ARENA, arena__isnull=False, jogador__isnull=True)
-                    | Q(tipo=TipoConta.JOGADOR, jogador__isnull=False, arena__isnull=True)
+                    | Q(tipo__in=(TipoConta.JOGADOR, TipoConta.ORGANIZADOR), jogador__isnull=False, arena__isnull=True)
                     | Q(tipo=TipoConta.PLATAFORMA, arena__isnull=True, jogador__isnull=True)
                 ),
                 name="carteira_dono_coerente",
@@ -1663,6 +1771,8 @@ class LedgerAccount(BaseModel):
             return f"Carteira · {self.arena}"
         if self.tipo == TipoConta.JOGADOR:
             return f"Crédito · {self.jogador}"
+        if self.tipo == TipoConta.ORGANIZADOR:
+            return f"Saldo de organizador · {self.jogador}"
         return "Carteira · ArenaMatch"
 
 
@@ -1754,3 +1864,52 @@ class LedgerEntry(ValidatedModel):
 
     def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
         raise ValidationError("Lançamentos do razão não podem ser apagados.")
+
+
+# --- Pelada de grupo (C2C): carteira e saques do organizador -------------------
+
+
+class Wallet(BaseModel):
+    """Carteira do usuário no app: dados para receber os saques via Pix.
+
+    Os saldos não ficam aqui: vêm sempre do razão (``razao.py``), que é a única
+    fonte de verdade do dinheiro. São dois: o crédito de jogador (não sacável,
+    vem de cancelamentos) e o saldo de organizador (sacável, vem das vagas vendidas
+    nas peladas de grupo).
+    """
+
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wallet", verbose_name="usuário"
+    )
+    tipo_chave_pix = models.CharField("tipo da chave Pix", max_length=10, choices=TipoChavePix.choices, blank=True)
+    chave_pix = models.CharField("chave Pix", max_length=77, blank=True)
+
+    class Meta:
+        verbose_name = "carteira do usuário"
+        verbose_name_plural = "carteiras dos usuários"
+
+    def __str__(self) -> str:
+        return f"Carteira · {self.usuario}"
+
+    @property
+    def pode_sacar(self) -> bool:
+        return bool(self.chave_pix)
+
+
+class Saque(BaseModel):
+    """Transferência via Pix do saldo disponível do organizador."""
+
+    wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name="saques", verbose_name="carteira")
+    valor = models.DecimalField("valor (R$)", max_digits=12, decimal_places=2)
+    tipo_chave_pix = models.CharField("tipo da chave Pix", max_length=10, choices=TipoChavePix.choices)
+    chave_pix = models.CharField("chave Pix", max_length=77, help_text="Cópia da chave usada neste saque.")
+    status = models.CharField("status", max_length=10, choices=StatusRepasse.choices, default=StatusRepasse.PAGO)
+    referencia = models.CharField("referência no gateway", max_length=100, blank=True)
+
+    class Meta:
+        verbose_name = "saque"
+        verbose_name_plural = "saques"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Saque · {self.wallet.usuario} · {self.valor}"

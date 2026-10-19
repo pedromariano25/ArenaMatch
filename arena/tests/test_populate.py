@@ -22,6 +22,7 @@ from arena.models import (
     StatusPartida,
     TipoConta,
     TipoLancamento,
+    Wallet,
 )
 
 HASHER_RAPIDO = ["django.contrib.auth.hashers.MD5PasswordHasher"]
@@ -63,10 +64,24 @@ class PopulateDbTest(TestCase):
                     tipo__in=(TipoLancamento.VENDA_VAGA, TipoLancamento.ESTORNO),
                 )
             )
+            # As peladas de grupo ficam de fora: o dinheiro delas é do organizador.
             confirmadas = Booking.objects.filter(
-                open_match__time_slot__court__arena=arena, status=StatusInscricao.CONFIRMADA
+                open_match__time_slot__court__arena=arena,
+                open_match__organizador__isnull=True,
+                status=StatusInscricao.CONFIRMADA,
             ).aggregate(total=Sum("valor_vaga"))["total"] or Decimal("0")
             self.assertEqual(vendas, confirmadas)
+
+    def test_peladas_de_grupo_e_carteira_dos_organizadores(self):
+        self.popular()
+        self.assertTrue(OpenMatch.objects.peladas_de_grupo().filter(status=StatusPartida.ABERTA).exists())
+        self.assertTrue(OpenMatch.objects.de_arenas().filter(status=StatusPartida.ABERTA).exists())
+        for wallet in Wallet.objects.select_related("usuario"):
+            vendas = Booking.objects.filter(
+                open_match__organizador=wallet.usuario, status=StatusInscricao.CONFIRMADA
+            ).aggregate(total=Sum("valor_vaga"))["total"] or Decimal("0")
+            saldo = razao.saldo_do_organizador(wallet.usuario)
+            self.assertEqual(vendas - saldo.sacado, saldo.disponivel + saldo.a_liberar)
 
     def test_rodar_de_novo_recria_os_dados(self):
         self.popular(dias=0)

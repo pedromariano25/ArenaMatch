@@ -31,21 +31,24 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import DetailView, FormView, ListView, TemplateView
 
-from . import acesso, checkout, gestao, jogadores, partidas, razao
+from . import acesso, checkout, gestao, jogadores, partidas, peladas, razao
 from .forms import (
     AbrirPartidaForm,
     ArenaConfigForm,
     AvaliacaoPartidaForm,
     CadastroJogadorForm,
+    ChavePixForm,
     CheckoutForm,
     CodigoAcessoForm,
     FiltroVitrineForm,
+    NovaPeladaForm,
     TelefoneForm,
     PerfilJogadorForm,
     QuadraForm,
 )
 from .models import (
     STATUS_INSCRICAO_ATIVA,
+    VALOR_MINIMO_SAQUE,
     Arena,
     Booking,
     Court,
@@ -63,6 +66,7 @@ from .models import (
     TipoLancamento,
     WaitlistEntry,
 )
+from .formatacao import formatar_brl as brl
 from .localizacao import distancia_km, ler_coordenadas
 from .pagamentos import obter_gateway
 
@@ -702,6 +706,109 @@ class AvaliarPartidaView(LoginRequiredMixin, View):
 
 
 # =============================================================================
+# Pelada de grupo (C2C): o organizador vende as vagas que faltam
+# =============================================================================
+
+
+class OrganizarView(LoginRequiredMixin, TemplateView):
+    """Painel do organizador: carteira (saldo e saque via Pix) e as peladas dele."""
+
+    template_name = "arena/organizar.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto.update(peladas.resumo_do_organizador(self.request.user))
+        contexto.setdefault("form_pix", ChavePixForm(instance=contexto["wallet"]))
+        contexto["valor_minimo_saque"] = VALOR_MINIMO_SAQUE
+        return contexto
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        """Salva a chave Pix (o formulário fica na mesma tela)."""
+        form = ChavePixForm(request.POST, instance=peladas.wallet_do(request.user))
+        if not form.is_valid():
+            return self.render_to_response(self.get_context_data(form_pix=form))
+        form.save()
+        messages.success(request, "Chave Pix salva. Os saques vão para ela.")
+        return redirect("arena:organizar")
+
+
+class NovaPeladaView(LoginRequiredMixin, FormView):
+    """O organizador publica as vagas que faltam na pelada do grupo."""
+
+    template_name = "arena/pelada_nova.html"
+    form_class = NovaPeladaForm
+
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        if request.user.is_authenticated and not request.user.is_player:
+            messages.warning(request, "Só contas de jogador organizam peladas.")
+            return redirect("arena:vitrine")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        contexto["taxas"] = NovaPeladaForm.taxas()
+        return contexto
+
+    def form_valid(self, form: NovaPeladaForm) -> HttpResponse:
+        dados = form.cleaned_data
+        try:
+            pelada = peladas.criar_pelada(
+                self.request.user,
+                dados["quadra"],
+                dados["dia"],
+                dados["hora_inicio"],
+                dados["hora_fim"],
+                titulo=dados["titulo"],
+                vagas_linha=dados["vagas_linha"],
+                valor_por_vaga=dados["valor_por_vaga"],
+                vagas_goleiro=dados["vagas_goleiro"],
+                valor_goleiro=dados["valor_goleiro"],
+                nivel=dados["nivel"],
+            )
+        except ValidationError as erro:
+            form.add_error(None, _mensagens(erro))
+            return self.form_invalid(form)
+        messages.success(
+            self.request,
+            f"{pelada.titulo} está no feed: {pelada.vagas_totais} vaga(s) a "
+            f"{brl(pelada.preco_final_jogador)}. Compartilhe o link com a galera.",
+        )
+        return redirect(pelada)
+
+
+class CancelarPeladaView(LoginRequiredMixin, View):
+    """O organizador desiste das vagas; quem comprou recebe o dinheiro de volta."""
+
+    def post(self, request: HttpRequest, pk: str) -> HttpResponse:
+        pelada = get_object_or_404(OpenMatch, pk=pk, organizador=request.user)
+        try:
+            reembolsados = peladas.cancelar_pelada(pelada, request.user)
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            messages.success(
+                request,
+                f"Vagas canceladas. {reembolsados} jogador(es) reembolsado(s)."
+                if reembolsados
+                else "Vagas canceladas. Ninguém tinha comprado, então não houve reembolso.",
+            )
+        return redirect("arena:organizar")
+
+
+class SacarView(LoginRequiredMixin, View):
+    """Saque via Pix de todo o saldo disponível do organizador."""
+
+    def post(self, request: HttpRequest) -> HttpResponse:
+        try:
+            saque = razao.solicitar_saque(request.user)
+        except ValidationError as erro:
+            messages.error(request, _mensagens(erro))
+        else:
+            messages.success(request, f"Saque de {brl(saque.valor)} enviado para a sua chave Pix.")
+        return redirect("arena:organizar")
+
+
+# =============================================================================
 # Portal do Gestor (ArenaManager) - B2B
 # =============================================================================
 
@@ -814,6 +921,7 @@ class GestorAgendaView(GestorRequiredMixin, TemplateView):
             legenda=[
                 (tipo.MENSALISTA, "Mensalista", contagem[tipo.MENSALISTA]),
                 (tipo.AVULSO, "Avulso", contagem[tipo.AVULSO]),
+                (tipo.PELADA, "Pelada de grupo", contagem[tipo.PELADA]),
                 (tipo.PARTIDA, "Partida aberta", contagem[tipo.PARTIDA] + contagem[tipo.LOTADA]),
                 (tipo.VAGO, "Livre", contagem[tipo.VAGO]),
                 (tipo.BLOQUEADO, "Bloqueado", contagem[tipo.BLOQUEADO]),

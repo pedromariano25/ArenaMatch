@@ -1,0 +1,104 @@
+{% extends "arena/base.html" %}
+{% load arena_extras %}
+
+{% block title %}Completar pelada{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+  <a href="{% url 'arena:organizar' %}" class="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-400 transition hover:text-white">{% icone "voltar" "size-4" %} Organizar</a>
+  <h1 class="titulo mt-4 text-4xl text-white sm:text-5xl">Completar a pelada</h1>
+  <p class="mt-2 max-w-xl text-zinc-400">O grupo já tem o horário com a arena. Abra só as vagas que faltam: elas aparecem no feed para quem quer jogar.</p>
+
+  <form method="post" class="mt-8 grid gap-6 lg:grid-cols-[1fr_22rem]" data-pelada data-taxa="{{ taxas.percentual|stringformat:'s' }}" data-minima="{{ taxas.minima|stringformat:'s' }}">
+    {% csrf_token %}
+    <div class="space-y-6">
+      {% if form.non_field_errors %}
+        <p class="rounded-2xl bg-rose-400/10 p-4 text-sm text-rose-200 ring-1 ring-rose-400/30 ring-inset">{{ form.non_field_errors|join:" " }}</p>
+      {% endif %}
+
+      <fieldset class="vidro space-y-5 rounded-3xl p-6">
+        <legend class="sr-only">A pelada</legend>
+        <p class="text-lg font-bold text-white">A pelada</p>
+        {% include "arena/_campo.html" with campo=form.titulo %}
+        {% include "arena/_campo.html" with campo=form.quadra %}
+        <div class="grid gap-5 sm:grid-cols-3">
+          {% include "arena/_campo.html" with campo=form.dia %}
+          {% include "arena/_campo.html" with campo=form.hora_inicio %}
+          {% include "arena/_campo.html" with campo=form.hora_fim %}
+        </div>
+        {% include "arena/_campo.html" with campo=form.nivel %}
+      </fieldset>
+
+      <fieldset class="vidro space-y-5 rounded-3xl p-6">
+        <legend class="sr-only">Vagas e valores</legend>
+        <p class="text-lg font-bold text-white">Vagas que faltam</p>
+        <div class="grid gap-5 sm:grid-cols-2">
+          {% include "arena/_campo.html" with campo=form.vagas_linha %}
+          {% include "arena/_campo.html" with campo=form.valor_por_vaga %}
+        </div>
+        <div class="rounded-2xl bg-cyan-400/5 p-4 ring-1 ring-cyan-400/20 ring-inset">
+          <p class="font-bold text-cyan-200">Goleiro de aluguel</p>
+          <p class="mt-1 text-sm text-zinc-400">Precisa de goleiro? Abra vagas só para o gol, com preço próprio ou de graça.</p>
+          <div class="mt-4 grid gap-5 sm:grid-cols-2">
+            {% include "arena/_campo.html" with campo=form.vagas_goleiro %}
+            {% include "arena/_campo.html" with campo=form.valor_goleiro %}
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <aside class="lg:sticky lg:top-24 lg:self-start">
+      <div class="vidro rounded-3xl p-6">
+        <p class="text-sm font-bold text-zinc-400">Cada jogador de linha paga</p>
+        <p class="titulo mt-1 text-5xl text-white" data-preco>—</p>
+        <dl class="mt-4 space-y-2 text-sm">
+          <div class="flex justify-between"><dt class="text-zinc-400">Você recebe</dt><dd class="font-bold text-lime-300" data-recebe>—</dd></div>
+          <div class="flex justify-between"><dt class="text-zinc-400">Taxa ArenaMatch</dt><dd class="text-zinc-300" data-taxa-vaga>—</dd></div>
+          <div class="flex justify-between border-t border-white/5 pt-2"><dt class="text-zinc-400">Goleiro paga</dt><dd class="text-cyan-200" data-goleiro>—</dd></div>
+        </dl>
+        <div class="mt-5 rounded-2xl bg-white/[0.03] p-4">
+          <p class="text-sm text-zinc-400">Vendendo tudo, você recebe</p>
+          <p class="titulo text-3xl text-lime-300" data-total>—</p>
+        </div>
+        <p class="mt-4 text-xs text-zinc-500">A taxa é de {{ taxas.percentual|floatformat:"-2" }}% sobre o que você recebe, com mínimo de {{ taxas.minima|brl }} por vaga de linha (no goleiro, só o percentual). O valor libera no dia seguinte ao jogo, para saque via Pix.</p>
+        <button type="submit" class="botao-neon mt-6 flex w-full py-4 text-base">Publicar as vagas</button>
+      </div>
+    </aside>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const form = document.querySelector("[data-pelada]");
+    if (!form) return;
+    const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+    const percentual = parseFloat(form.dataset.taxa) || 0;
+    const minima = parseFloat(form.dataset.minima) || 0;
+    const ler = (campo) => {
+      const texto = (form.elements[campo]?.value || "").trim();
+      const limpo = texto.includes(",") ? texto.replace(/\./g, "").replace(",", ".") : texto;
+      return parseFloat(limpo) || 0;
+    };
+    // Mesmo arredondamento do servidor: centavo mais próximo, meio para cima.
+    const centavos = (valor) => Math.round(valor * 100 + Number.EPSILON) / 100;
+    const mostrar = (seletor, valor) => { form.querySelector(seletor).textContent = valor; };
+    const atualizar = () => {
+      const valor = ler("valor_por_vaga");
+      const vagas = Math.max(0, Math.floor(ler("vagas_linha")));
+      const goleiros = Math.max(0, Math.floor(ler("vagas_goleiro")));
+      const valorGoleiro = ler("valor_goleiro");
+      const taxa = valor ? Math.max(centavos((valor * percentual) / 100), minima) : 0;
+      const taxaGoleiro = valorGoleiro ? centavos((valorGoleiro * percentual) / 100) : 0;
+      mostrar("[data-preco]", valor ? moeda.format(valor + taxa) : "—");
+      mostrar("[data-recebe]", valor ? moeda.format(valor) : "—");
+      mostrar("[data-taxa-vaga]", valor ? moeda.format(taxa) : "—");
+      mostrar("[data-goleiro]", goleiros ? (valorGoleiro ? moeda.format(valorGoleiro + taxaGoleiro) : "Grátis") : "Sem vaga de goleiro");
+      mostrar("[data-total]", moeda.format(valor * vagas + valorGoleiro * goleiros));
+    };
+    form.addEventListener("input", atualizar);
+    atualizar();
+  })();
+</script>
+{% endblock %}

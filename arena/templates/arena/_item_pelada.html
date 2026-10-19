@@ -1,0 +1,30 @@
+{% load arena_extras %}
+{% with horario=pelada.time_slot %}
+<article class="vidro flex flex-col gap-4 rounded-3xl p-5 sm:flex-row sm:items-center">
+  <div class="grid size-16 shrink-0 place-items-center rounded-2xl bg-fuchsia-400/10 text-center ring-1 ring-fuchsia-400/25 ring-inset">
+    <span class="text-[11px] font-bold text-fuchsia-300 uppercase">{{ horario.data|date:"M" }}</span>
+    <span class="titulo -mt-1 text-2xl leading-none text-white">{{ horario.data|date:"d" }}</span>
+  </div>
+  <div class="min-w-0 flex-1">
+    <h3 class="truncate font-bold text-white"><a href="{{ pelada.get_absolute_url }}" class="hover:underline">{{ pelada.titulo }}</a>{% if pelada.status == "cancelada" %} <span class="selo ml-1 bg-white/5 text-zinc-400 ring-white/10">Cancelada</span>{% elif pelada.status == "lotada" %} <span class="selo ml-1 bg-lime-400/15 text-lime-300 ring-lime-400/30">Completa</span>{% endif %}</h3>
+    <p class="mt-0.5 truncate text-sm text-zinc-400">{{ horario.data|rotulo_dia }} · {{ horario.intervalo }} · {{ horario.court.arena.nome }} ({{ horario.court.nome_ou_numero }})</p>
+    <div class="mt-2 flex items-center gap-3">
+      <div class="h-1.5 w-28 overflow-hidden rounded-full bg-white/10" role="img" aria-label="{{ pelada.percentual_ocupado }}% das vagas vendidas">
+        <div class="h-full rounded-full bg-gradient-to-r from-fuchsia-400 to-cyan-400" style="width: {{ pelada.percentual_ocupado }}%"></div>
+      </div>
+      <span class="text-xs font-semibold text-zinc-400 tabular-nums">{{ pelada.jogadores_confirmados }}/{{ pelada.vagas_totais }} vendidas{% if pelada.em_pagamento %} · {{ pelada.em_pagamento }} pagando agora{% endif %}</span>
+    </div>
+  </div>
+  <div class="flex items-center justify-between gap-4 sm:flex-col sm:items-end">
+    <p class="text-right"><span class="block text-xs text-zinc-500">você recebe</span><span class="titulo text-xl text-lime-300 tabular-nums">{{ pelada.arrecadado|default:0|brl }}</span></p>
+    {% if pelada.status == "aberta" or pelada.status == "lotada" %}
+      {% if not pelada.time_slot.ja_comecou %}
+        <form method="post" action="{% url 'arena:cancelar_pelada' pelada.pk %}" onsubmit="return confirm('Cancelar as vagas desta pelada? Quem comprou recebe o dinheiro de volta.');">
+          {% csrf_token %}
+          <button type="submit" class="text-xs font-bold text-zinc-500 underline underline-offset-2 transition hover:text-rose-300">Cancelar vagas</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</article>
+{% endwith %}

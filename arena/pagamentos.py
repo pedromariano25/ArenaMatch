@@ -80,6 +80,10 @@ class Gateway(ABC):
         """Repassa ``valor`` para a arena; devolve a referência da transferência."""
 
     @abstractmethod
+    def transferir_pix(self, chave_pix: str, valor: Decimal) -> str:
+        """Envia ``valor`` para uma chave Pix (saque do organizador); devolve a referência."""
+
+    @abstractmethod
     def tarifa(self, metodo: str, valor: Decimal) -> Decimal:
         """Tarifa cobrada pelo gateway numa transação de ``valor``."""
 
@@ -130,6 +134,9 @@ class MockGateway(Gateway):
 
     def transferir(self, arena: "Arena", valor: Decimal) -> str:
         return f"mock_tr_{secrets.token_hex(8)}"
+
+    def transferir_pix(self, chave_pix: str, valor: Decimal) -> str:
+        return f"mock_pix_{secrets.token_hex(8)}"
 
     def tarifa(self, metodo: str, valor: Decimal) -> Decimal:
         percentual = self.TARIFAS_PERCENTUAIS.get(metodo, Decimal("0"))

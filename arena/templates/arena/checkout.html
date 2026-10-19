@@ -12,8 +12,9 @@
     {% csrf_token %}
     <div class="border-b border-white/5 p-6">
       <p class="text-xs font-bold uppercase tracking-widest text-lime-300">Garanta sua vaga</p>
-      <h1 class="titulo mt-1 text-3xl text-white">{{ arena.nome }}</h1>
-      <p class="mt-1 text-sm text-zinc-400">{{ horario.data|rotulo_dia }}, {{ horario.data|date:"d \d\e F"|lower }} · {{ horario.intervalo }} · {{ quadra.nome_ou_numero }}</p>
+      <h1 class="titulo mt-1 text-3xl text-white">{{ partida.nome_exibido }}</h1>
+      <p class="mt-1 text-sm text-zinc-400">{{ horario.data|rotulo_dia }}, {{ horario.data|date:"d \d\e F"|lower }} · {{ horario.intervalo }} · {% if partida.pelada_de_grupo %}{{ arena.nome }}, {% endif %}{{ quadra.nome_ou_numero }}</p>
+      {% if partida.pelada_de_grupo %}<p class="mt-3 inline-flex items-center gap-2 text-sm text-fuchsia-200">{% include "arena/_avatar.html" with usuario=partida.organizador tamanho="size-6" texto="text-[10px]" %} Pelada de grupo organizada por {{ partida.organizador.nome_publico }}</p>{% endif %}
     </div>
 
     {% if form.non_field_errors %}
@@ -29,27 +30,27 @@
             <input type="radio" name="posicao" value="{{ valor }}" class="mt-1 accent-lime-400" {% if form.posicao.value == valor or not form.posicao.value and forloop.first %}checked{% endif %} {% if valor == 'goleiro' and not livres_goleiro %}disabled{% endif %}>
             <span>
               <span class="block text-sm font-bold text-white">{{ rotulo }}</span>
-              <span class="block text-sm text-zinc-400">{% if valor == "goleiro" %}{% if livres_goleiro %}Grátis · {{ livres_goleiro }} vaga{{ livres_goleiro|pluralize }}{% else %}Esgotado{% endif %}{% else %}{{ partida.preco_final_jogador|brl }} no Pix{% endif %}</span>
+              <span class="block text-sm text-zinc-400">{% if valor == "goleiro" %}{% if livres_goleiro %}{% if partida.goleiro_gratis %}Grátis{% else %}{{ partida.preco_goleiro|brl }} no Pix{% endif %} · {{ livres_goleiro }} vaga{{ livres_goleiro|pluralize }}{% else %}Esgotado{% endif %}{% else %}{{ partida.preco_final_jogador|brl }} no Pix{% endif %}</span>
             </span>
           </label>
         {% endfor %}
       </div>
     </fieldset>
 
-    <fieldset class="mt-6 px-6" data-metodos>
+    <fieldset class="mt-6 px-6" data-metodos data-goleiro-gratis="{% if partida.goleiro_gratis %}1{% endif %}">
       <legend class="text-sm font-bold text-zinc-200">Pagamento</legend>
       {% if form.metodo.errors %}<p class="mt-1 text-sm text-rose-300">{{ form.metodo.errors|join:" " }}</p>{% endif %}
       <div class="mt-3 space-y-2">
         {% for valor, rotulo in form.fields.metodo.choices %}
           <label class="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10">
             <span class="flex items-center gap-3"><input type="radio" name="metodo" value="{{ valor }}" class="accent-lime-400" {% if form.metodo.value == valor or not form.metodo.value and forloop.first %}checked{% endif %}><span class="text-sm font-bold text-white">{{ rotulo }}</span></span>
-            <span class="text-sm font-semibold text-zinc-300">{% if valor == "cartao" %}{{ partida.preco_cartao|brl }}{% elif valor == "credito" %}{{ partida.preco_final_jogador|brl }} <span class="text-zinc-500">· saldo {{ saldo|brl }}</span>{% else %}{{ partida.preco_final_jogador|brl }}{% endif %}</span>
+            <span class="text-sm font-semibold text-zinc-300">{% if valor == "cartao" %}<span data-preco data-linha="{{ partida.preco_cartao|brl }}" data-goleiro="{{ partida.preco_goleiro_cartao|brl }}">{{ partida.preco_cartao|brl }}</span>{% elif valor == "credito" %}<span data-preco data-linha="{{ partida.preco_final_jogador|brl }}" data-goleiro="{{ partida.preco_goleiro|brl }}">{{ partida.preco_final_jogador|brl }}</span> <span class="text-zinc-500">· saldo {{ saldo|brl }}</span>{% else %}<span data-preco data-linha="{{ partida.preco_final_jogador|brl }}" data-goleiro="{{ partida.preco_goleiro|brl }}">{{ partida.preco_final_jogador|brl }}</span>{% endif %}</span>
           </label>
         {% endfor %}
       </div>
       <dl class="mt-4 space-y-1 text-xs text-zinc-500">
-        <div class="flex justify-between"><dt>Parte da quadra</dt><dd>{{ partida.preco_vaga_base|brl }}</dd></div>
-        <div class="flex justify-between"><dt>Taxa de serviço</dt><dd>{{ partida.valor_taxa_vaga|brl }}</dd></div>
+        <div class="flex justify-between"><dt>{% if partida.pelada_de_grupo %}Para o organizador{% else %}Parte da quadra{% endif %}</dt><dd data-preco data-linha="{{ partida.preco_vaga_base|brl }}" data-goleiro="{{ partida.valor_vaga_goleiro|brl }}">{{ partida.preco_vaga_base|brl }}</dd></div>
+        <div class="flex justify-between"><dt>Taxa de serviço</dt><dd data-preco data-linha="{{ partida.valor_taxa_vaga|brl }}" data-goleiro="{{ partida.valor_taxa_goleiro|brl }}">{{ partida.valor_taxa_vaga|brl }}</dd></div>
         <div class="flex justify-between"><dt>Cartão</dt><dd>+5% para cobrir a operadora</dd></div>
       </dl>
     </fieldset>
@@ -57,7 +58,7 @@
     <div class="mt-6 space-y-4 border-t border-white/5 bg-white/[0.02] p-6">
       <p class="flex gap-3 text-sm leading-relaxed text-zinc-400">
         {% icone "info" "size-5 shrink-0 text-cyan-300" %}
-        <span>A vaga fica segura por 10 minutos enquanto você paga. Cancelando até 24h antes, o valor volta como crédito. Se a partida não atingir o mínimo de jogadores, todo mundo é reembolsado.</span>
+        <span>A vaga fica segura por 10 minutos enquanto você paga. Cancelando até 24h antes, o valor volta como crédito. {% if partida.pelada_de_grupo %}Se o organizador cancelar a pelada, todo mundo é reembolsado.{% else %}Se a partida não atingir o mínimo de jogadores, todo mundo é reembolsado.{% endif %}</span>
       </p>
       <button type="submit" class="botao-neon flex w-full py-4 text-base">
         {% icone "check" "size-5" %} Garantir vaga
@@ -72,9 +73,14 @@
 <script>
   (() => {
     const metodos = document.querySelector("[data-metodos]");
+    const goleiroGratis = Boolean(metodos.dataset.goleiroGratis);
     const atualizar = () => {
-      const goleiro = document.querySelector('input[name="posicao"][value="goleiro"]')?.checked;
-      metodos.hidden = Boolean(goleiro);
+      const goleiro = Boolean(document.querySelector('input[name="posicao"][value="goleiro"]')?.checked);
+      metodos.hidden = goleiro && goleiroGratis;
+      // Goleiro pago: os preços mostrados passam a ser os da vaga de goleiro.
+      metodos.querySelectorAll("[data-preco]").forEach((preco) => {
+        preco.textContent = goleiro ? preco.dataset.goleiro : preco.dataset.linha;
+      });
     };
     document.querySelectorAll('input[name="posicao"]').forEach((opcao) => opcao.addEventListener("change", atualizar));
     atualizar();

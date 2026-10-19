@@ -18,7 +18,15 @@
 {% else %}
   <div class="h-full min-h-20 rounded-xl border-l-[3px] p-2 {{ celula.tipo|classes_bloco }}">
     <span class="selo {{ celula.tipo|classes_selo }}">{{ celula.rotulo }}</span>
-    {% if celula.partida %}
+    {% if celula.tipo == "pelada" %}
+      <p class="mt-1.5 text-xs font-bold text-zinc-100">{{ celula.partida.organizador.nome_publico }}</p>
+      <p class="mt-0.5 text-[11px] text-zinc-400 tabular-nums">{{ celula.partida.jogadores_confirmados }}/{{ celula.partida.vagas_totais }} vagas vendidas pelo grupo</p>
+      <form method="post" action="{% url 'gestor:cancelar_partida' celula.partida.pk %}" class="mt-1" onsubmit="return confirm('Cancelar esta pelada de grupo? Quem comprou vaga recebe o dinheiro de volta na hora.');">
+        {% csrf_token %}
+        <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
+        <button type="submit" class="text-[11px] font-bold text-zinc-500 underline underline-offset-2 transition hover:text-rose-300">Cancelar pelada</button>
+      </form>
+    {% elif celula.partida %}
       <p class="mt-1.5 text-xs font-bold text-zinc-100 tabular-nums">{{ celula.partida.jogadores_confirmados }}/{{ celula.partida.vagas_totais }} pagas</p>
       <div class="mt-1 h-1 overflow-hidden rounded-full bg-white/10" role="img" aria-label="{{ celula.partida.percentual_ocupado }}% das vagas vendidas">
         <div class="h-full rounded-full bg-lime-400" style="width: {{ celula.partida.percentual_ocupado }}%"></div>

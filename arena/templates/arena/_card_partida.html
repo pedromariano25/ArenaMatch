@@ -1,6 +1,16 @@
 {% load arena_extras %}
 {% with horario=partida.time_slot quadra=partida.time_slot.court arena=partida.time_slot.court.arena %}
-<article class="group vidro relative flex min-w-0 flex-col rounded-3xl p-5 transition hover:-translate-y-0.5 hover:border-lime-400/40 hover:bg-white/[0.06]">
+<article class="group vidro relative flex min-w-0 flex-col rounded-3xl p-5 transition hover:-translate-y-0.5 {% if partida.pelada_de_grupo %}ring-1 ring-fuchsia-400/25 hover:border-fuchsia-400/50{% else %}hover:border-lime-400/40{% endif %} hover:bg-white/[0.06]">
+  {# Origem da partida: arena parceira (B2C) ou pelada de um grupo (C2C). #}
+  {% if partida.pelada_de_grupo %}
+    <p class="mb-4 flex items-center gap-2 text-xs font-bold text-fuchsia-300">
+      {% include "arena/_avatar.html" with usuario=partida.organizador tamanho="size-6" texto="text-[10px]" %}
+      <span class="min-w-0 truncate">Pelada de grupo · por {{ partida.organizador.nome_publico }}</span>
+    </p>
+  {% else %}
+    <p class="mb-4 flex items-center gap-1.5 text-xs font-bold text-lime-300/90">{% icone "escudo" "size-4" %} Arena parceira</p>
+  {% endif %}
+
   <div class="flex items-start justify-between gap-3">
     <div>
       <p class="titulo text-4xl leading-none text-white">{{ horario.hora_inicio|time:"H:i" }}</p>
@@ -10,7 +20,7 @@
       <span class="rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ring-1 ring-inset {{ partida.nivel_competitividade|nivel_escuro }}" title="Aceita {{ partida.rotulo_faixa }}">{{ partida.get_nivel_competitividade_display }}</span>
       {% if partida.status == "lotada" %}
         <span class="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-zinc-300">Lotada</span>
-      {% elif partida.vagas_disponiveis <= 3 %}
+      {% elif partida.vagas_disponiveis <= 3 and not partida.pelada_de_grupo %}
         <span class="rounded-full bg-amber-400/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-300 ring-1 ring-inset ring-amber-400/30">Últimas vagas</span>
       {% endif %}
     </div>
@@ -18,10 +28,10 @@
 
   <div class="mt-4">
     <h3 class="text-lg font-bold text-white">
-      <a href="{{ partida.get_absolute_url }}" class="after:absolute after:inset-0 after:rounded-3xl focus-visible:outline-none">{{ arena.nome }}</a>
+      <a href="{{ partida.get_absolute_url }}" class="after:absolute after:inset-0 after:rounded-3xl focus-visible:outline-none">{{ partida.nome_exibido }}</a>
     </h3>
     <p class="mt-1 flex items-center gap-1.5 text-sm text-zinc-400">
-      {% icone "pin" "size-4 shrink-0 text-zinc-500" %}<span class="min-w-0 truncate">{{ quadra.nome_ou_numero }} · {{ arena.endereco_completo|local_resumido }}</span>
+      {% icone "pin" "size-4 shrink-0 text-zinc-500" %}<span class="min-w-0 truncate">{% if partida.pelada_de_grupo %}{{ arena.nome }} · {% endif %}{{ quadra.nome_ou_numero }} · {{ arena.endereco_completo|local_resumido }}</span>
       {% if partida.distancia is not None %}<span class="shrink-0 rounded-full bg-cyan-400/15 px-2 py-0.5 text-[11px] font-bold text-cyan-300">{{ partida.distancia|km }}</span>{% endif %}
     </p>
   </div>
@@ -38,7 +48,11 @@
       {% endif %}
     </div>
     <p class="min-w-0 text-sm text-zinc-400">
-      {% if partida.confirmadas %}
+      {% if partida.pelada_de_grupo and not partida.vagas_disponiveis %}
+        <span class="font-semibold text-zinc-200">Grupo completo:</span> todas as vagas foram vendidas.
+      {% elif partida.pelada_de_grupo %}
+        O grupo já tem o time. <span class="font-semibold text-zinc-200">Falta{{ partida.vagas_disponiveis|pluralize:"m" }} {{ partida.vagas_disponiveis }} vaga{{ partida.vagas_disponiveis|pluralize }}</span> para completar.
+      {% elif partida.confirmadas %}
         <span class="font-semibold text-zinc-200">{{ partida.confirmadas.0.player.nome_publico }}{% if partida.confirmadas|length > 1 %} e mais {{ partida.confirmadas|length|add:"-1" }}{% endif %}</span> confirmado{{ partida.confirmadas|length|pluralize }}
       {% else %}
         Seja o primeiro a entrar
@@ -48,37 +62,43 @@
 
   <div class="mt-4">
     <div class="flex items-center justify-between text-xs font-semibold">
-      {% if partida.jogo_confirmado %}
+      {% if partida.pelada_de_grupo %}
+        <span class="flex items-center gap-1.5 text-fuchsia-300">{% icone "check" "size-4" %} Jogo garantido pelo grupo</span>
+        <span class="text-zinc-500">{{ partida.vagas_ocupadas }}/{{ partida.vagas_totais }} vendidas</span>
+      {% elif partida.jogo_confirmado %}
         <span class="flex items-center gap-1.5 text-lime-300">{% icone "check" "size-4" %} Jogo confirmado</span>
+        <span class="text-zinc-500">{{ partida.jogadores_confirmados }}/{{ partida.vagas_totais }}</span>
       {% else %}
         <span class="text-amber-300">Faltam {{ partida.faltam_para_confirmar }} para confirmar</span>
+        <span class="text-zinc-500">{{ partida.jogadores_confirmados }}/{{ partida.vagas_totais }}</span>
       {% endif %}
-      <span class="text-zinc-500">{{ partida.jogadores_confirmados }}/{{ partida.vagas_totais }}</span>
     </div>
     <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10" role="img" aria-label="{{ partida.percentual_ocupado }}% das vagas preenchidas">
-      <div class="h-full rounded-full bg-gradient-to-r from-lime-400 to-cyan-400" style="width: {{ partida.percentual_ocupado }}%"></div>
+      <div class="h-full rounded-full bg-gradient-to-r {% if partida.pelada_de_grupo %}from-fuchsia-400 to-cyan-400{% else %}from-lime-400 to-cyan-400{% endif %}" style="width: {{ partida.percentual_ocupado }}%"></div>
     </div>
   </div>
 
   <div class="mt-5 flex items-end justify-between gap-3 border-t border-white/5 pt-4">
     <div>
       <p class="titulo text-2xl text-white">{{ partida.preco_final_jogador|brl }}</p>
-      <p class="text-xs text-zinc-500">por jogador{% if partida.vagas_goleiro %} · <span class="text-cyan-300">goleiro grátis</span>{% endif %}</p>
+      <p class="text-xs text-zinc-500">por jogador{% if partida.vagas_goleiro %} · <span class="text-cyan-300">{% if partida.goleiro_gratis %}goleiro grátis{% else %}goleiro {{ partida.preco_goleiro|brl }}{% endif %}</span>{% endif %}</p>
     </div>
     {% if partida.status == "lotada" %}
       <a href="{{ partida.get_absolute_url }}" class="relative z-10 rounded-full bg-white/10 px-4 py-2.5 text-sm font-bold text-zinc-200 transition hover:bg-white/15">Lista de espera</a>
     {% elif not user.is_authenticated %}
       <a href="{% url 'arena:entrar_telefone' %}?next={{ partida.get_absolute_url|urlencode }}" class="botao-neon relative z-10">Garantir vaga</a>
     {% elif partida.bloqueio %}
-      <span class="relative z-10 rounded-full bg-white/5 px-4 py-2.5 text-xs font-bold text-zinc-500" title="{{ partida.bloqueio }}">Fora do seu nível</span>
+      <span class="relative z-10 rounded-full bg-white/5 px-4 py-2.5 text-xs font-bold text-zinc-500" title="{{ partida.bloqueio }}">{% if partida.organizador_id == user.pk %}Sua pelada{% else %}Fora do seu nível{% endif %}</span>
     {% else %}
       <button type="button" class="botao-neon relative z-10"
         data-checkout="{% url 'arena:checkout' partida.pk %}"
-        data-titulo="{{ arena.nome }} · {{ horario.data|rotulo_dia }} {{ horario.hora_inicio|time:'H:i' }}"
+        data-titulo="{{ partida.nome_exibido }} · {{ horario.data|rotulo_dia }} {{ horario.hora_inicio|time:'H:i' }}"
         data-pix="{{ partida.preco_final_jogador|brl }}"
         data-cartao="{{ partida.preco_cartao|brl }}"
         data-preco="{{ partida.preco_final_jogador|stringformat:'s' }}"
-        data-goleiro="{% if pode_ser_goleiro and partida.goleiros_livres > 0 %}1{% endif %}">Garantir vaga</button>
+        data-goleiro="{% if pode_ser_goleiro and partida.goleiros_livres > 0 %}1{% endif %}"
+        data-goleiro-pix="{% if not partida.goleiro_gratis %}{{ partida.preco_goleiro|brl }}{% endif %}"
+        data-goleiro-cartao="{% if not partida.goleiro_gratis %}{{ partida.preco_goleiro_cartao|brl }}{% endif %}">Garantir vaga</button>
     {% endif %}
   </div>
 </article>
