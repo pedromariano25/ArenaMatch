@@ -14,6 +14,7 @@ encontram partidas abertas para completar.
 | --- | --- | --- |
 | **B2B** | Gestores de complexos esportivos | **ArenaManager**, o portal do gestor: painel com saldo a receber, vagas vendidas e horários ociosos, agenda das quadras (mensalistas, avulsos e bloqueios), check-in, financeiro e ajustes. Com um toque, transforma **horários vagos** em **partidas abertas** para a comunidade. |
 | **B2C** | Jogadores avulsos | App web mobile-first para achar partidas por dia, nível, piso, arena ou distância, ver quem vai e garantir a vaga pagando pelo app. |
+| **C2C** | Organizadores de peladas (mensalistas) | O grupo já tem o horário com a arena e vende pelo app as vagas que faltam. O valor da vaga vai para a carteira do organizador (saque via Pix), e o ArenaMatch fica com a taxa. |
 
 As duas frentes compartilham o mesmo banco de dados. A receita da arena cresce
 porque horários que ficariam vazios são vendidos vaga a vaga.
@@ -76,6 +77,24 @@ desenvolvimento, o SMS sai no log do servidor e o código aparece na própria te
 Os endereços antigos da vitrine (`/partidas/...`, `/minhas-inscricoes/` etc.)
 redirecionam para os equivalentes em `/app/`.
 
+## Pelada de grupo (C2C)
+
+O mensalista que organiza uma pelada fechada vende pelo app as vagas que faltam
+para fechar os times. Fica em `/app/organizar/` (botão **Organizar**).
+
+| Regra | Como funciona |
+| --- | --- |
+| Horário | É o horário de mensalista do grupo numa quadra parceira (o cadastrado pela arena ou um novo, declarado pelo organizador). Aparece na agenda da arena como "Pelada de grupo" |
+| Preço | O organizador define quanto recebe por vaga. A taxa C2C vai por cima: 20%, com mínimo de R$ 5 por vaga de linha. Ex.: R$ 15 para o organizador + R$ 5 = R$ 20 para o jogador |
+| Goleiro de aluguel | Vagas só para o gol, com preço próprio (taxa só percentual) ou grátis. Vale também nas partidas das arenas, que seguem com goleiro grátis por padrão |
+| Quórum | Não há: o grupo joga mesmo sem vender as vagas |
+| Dinheiro | A parte da vaga vai para o saldo do organizador (carteira `ORGANIZADOR` no razão, não para a arena), liberada no dia seguinte ao jogo. Saque via Pix de todo o disponível, mínimo de R$ 10 (`Wallet` guarda a chave Pix; `Saque` registra cada transferência) |
+| Cancelamento | O organizador (ou a arena, na sua quadra) cancela e todos recebem o dinheiro de volta. Para o jogador, valem as regras de sempre (crédito até 24h antes) |
+
+No feed, partidas de arena trazem o selo **Arena parceira**; peladas de grupo têm
+destaque magenta, o nome da pelada e o organizador. O filtro "Peladas de grupo"
+mostra só elas.
+
 ## Portal da arena
 
 O Portal do Gestor (`/manager/`) segue o mesmo visual escuro do app, com menu
@@ -104,7 +123,7 @@ fica parado.
 | Banco de dados | PostgreSQL 18 (driver psycopg 3), configurado por `DATABASE_URL` |
 | Rotinas automáticas | APScheduler, num processo próprio (`manage.py agendador`) |
 | Configuração | Variáveis de ambiente via `python-dotenv` |
-| Produção | gunicorn, WhiteNoise (arquivos estáticos comprimidos e com hash) e Blueprint do Render (`render.yaml`) |
+| Produção | gunicorn, WhiteNoise (arquivos estáticos comprimidos e com hash). No ar no Railway (`Dockerfile`); Blueprint do Render (`render.yaml`) como alternativa |
 
 ## Como rodar localmente
 
@@ -214,6 +233,18 @@ python manage.py agendador            # roda até Ctrl+C
 python manage.py agendador --uma-vez  # executa cada rotina uma vez (cron, conferência)
 ```
 
+## Deploy no Railway (em produção)
+
+O ArenaMatch está no ar em <https://arenamatch-production.up.railway.app>
+(projeto `arenamatch` no Railway: serviço web + PostgreSQL 18).
+
+- O Railway constrói pelo `Dockerfile` (Python 3.14, `collectstatic` no build, usuário sem root).
+- Ao subir, o `start.sh` roda `migrate`, cria a demonstração se o banco estiver vazio
+  (`ARENAMATCH_POPULAR_DEMO`), sobe o agendador e o gunicorn.
+- Publicar uma versão nova: `railway up --service arenamatch` na pasta do projeto.
+- Recriar a demonstração (APAGA os dados): `railway ssh --service arenamatch -- python manage.py populate_db --force`.
+- As contas de demonstração usam a senha da variável `ARENAMATCH_SENHA_DEMO` do serviço.
+
 ## Deploy no Render
 
 O repositório já tem tudo para um deploy sem linha de comando:
@@ -295,6 +326,7 @@ no `.env` de desenvolvimento) ou com `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO=True`
 │   ├── notificacoes.py     # E-mails aos jogadores (enviados depois do commit)
 │   ├── pagamentos.py       # Interface Gateway e o MockGateway de desenvolvimento
 │   ├── partidas.py         # Partida: cancelamento com reembolso, mínimo de jogadores, encerramento
+│   ├── peladas.py          # Pelada de grupo (C2C): criar, cancelar e o resumo do organizador
 │   ├── razao.py            # Razão contábil: carteiras, lançamentos, saldos e repasses
 │   ├── rotinas.py          # Rotinas automáticas (@rotina) executadas pelo agendador
 │   ├── urls_gestor.py      # Rotas do Portal do Gestor (/manager/)
@@ -302,6 +334,7 @@ no `.env` de desenvolvimento) ou com `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO=True`
 │   └── views.py            # Site, app do jogador (B2C) e Portal do Gestor (B2B)
 ├── config/                 # settings, urls, wsgi/asgi
 ├── .env.example            # Modelo de variáveis de ambiente (o .env real não é versionado)
+├── Dockerfile              # Imagem de produção (Railway)
 ├── build.sh                # Build de produção (Render)
 ├── manage.py
 ├── render.yaml             # Blueprint do Render (web + PostgreSQL)
