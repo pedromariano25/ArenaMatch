@@ -5,43 +5,38 @@
 
 {% block content %}
 {% with partida=inscricao.open_match %}
-<div class="mx-auto max-w-lg px-4 py-8 sm:py-12">
-  <div class="text-center">
-    <span class="mx-auto grid size-14 place-items-center rounded-full bg-amber-400/15 text-amber-300 ring-1 ring-inset ring-amber-400/30">{% icone "relogio" "size-7" %}</span>
-    <h1 class="titulo mt-4 text-3xl text-white">Pague com Pix</h1>
-    <p class="mt-1 text-zinc-400">Sua vaga está segura por <strong class="titulo text-xl text-lime-300" data-contador data-fim="{{ inscricao.reservada_ate|date:'c' }}">10:00</strong></p>
-  </div>
+<div class="mx-auto max-w-lg px-4 py-6 sm:py-10">
+  <h1 class="titulo text-3xl">Pague com Pix</h1>
+  <p class="mt-2 text-lg text-gray-500">Sua vaga está segura por <strong class="tabular-nums text-gray-900" data-contador data-fim="{{ inscricao.reservada_ate|date:'c' }}">10:00</strong></p>
 
-  <div class="vidro mt-8 rounded-3xl p-6">
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <p class="font-bold text-white">{{ partida.time_slot.court.arena.nome }}</p>
-        <p class="text-sm text-zinc-400">{{ partida.time_slot.data|rotulo_dia }} · {{ partida.time_slot.intervalo }}</p>
+  <section class="cartao mt-6 p-5">
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="truncate text-lg font-semibold">{{ partida.nome_exibido }}</p>
+        <p class="text-gray-500">{{ partida.time_slot.data|rotulo_dia }} · {{ partida.time_slot.intervalo }}</p>
       </div>
-      <p class="titulo text-3xl text-white">{{ inscricao.valor_total|brl }}</p>
+      <p class="titulo shrink-0 text-2xl tabular-nums">{{ inscricao.valor_total|brl }}</p>
     </div>
 
     {% if pagamento %}
-      <label for="pix" class="mt-6 block text-sm font-bold text-zinc-200">Pix copia e cola</label>
-      <div class="mt-2 flex gap-2">
-        <input id="pix" readonly value="{{ pagamento.pix_copia_e_cola }}" class="block w-full min-w-0 truncate rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-xs text-zinc-300">
-        <button type="button" data-copiar class="shrink-0 rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15">Copiar</button>
-      </div>
-      <p class="mt-3 text-xs text-zinc-500">Abra o app do banco, escolha Pix copia e cola e cole o código. A confirmação chega aqui sozinha.</p>
+      <label for="pix" class="mt-6 block text-base font-semibold">Pix copia e cola</label>
+      <input id="pix" readonly value="{{ pagamento.pix_copia_e_cola }}" class="campo mt-2 truncate font-mono text-sm">
+      <button type="button" data-copiar class="botao mt-3 w-full">Copiar código Pix</button>
+      <p class="mt-3 text-sm text-gray-500">No app do banco, escolha Pix copia e cola e cole o código. A confirmação aparece aqui sozinha.</p>
     {% endif %}
+  </section>
 
-    {% if permite_simulacao %}
-      <form method="post" action="{% url 'arena:simular_pagamento' inscricao.pk %}" class="mt-6 rounded-2xl border border-dashed border-amber-400/40 bg-amber-400/5 p-4">
-        {% csrf_token %}
-        <p class="text-sm text-amber-200"><strong class="font-bold">Ambiente de teste.</strong> Este Pix é simulado e não deve ser pago. Use o botão para simular a confirmação do banco.</p>
-        <button type="submit" class="mt-3 w-full rounded-full bg-amber-300 px-5 py-3 text-sm font-black text-zinc-950 transition hover:bg-amber-200">Simular pagamento aprovado</button>
-      </form>
-    {% endif %}
-  </div>
+  {% if permite_simulacao %}
+    <form method="post" action="{% url 'arena:simular_pagamento' inscricao.pk %}" class="mt-4 rounded-2xl border border-dashed border-amber-400 bg-amber-50 p-5">
+      {% csrf_token %}
+      <p class="text-base text-amber-900"><strong>Ambiente de teste.</strong> Este Pix é simulado e não deve ser pago.</p>
+      <button type="submit" class="botao-secundario mt-3 w-full">Simular pagamento aprovado</button>
+    </form>
+  {% endif %}
 
   <form method="post" action="{% url 'arena:cancelar_inscricao' inscricao.pk %}" class="mt-6 text-center">
     {% csrf_token %}
-    <button type="submit" class="text-sm font-semibold text-zinc-500 transition hover:text-rose-300">Desistir e liberar a vaga</button>
+    <button type="submit" class="text-base font-semibold text-gray-500 hover:text-gray-900">Desistir e liberar a vaga</button>
   </form>
 </div>
 {% endwith %}

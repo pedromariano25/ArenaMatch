@@ -1,31 +1,28 @@
 {% extends "arena/base.html" %}
-{% load arena_extras %}
 
 {% block title %}Entrar com senha{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-sm px-4 py-12 sm:py-16">
-  <div class="text-center">
-    <h1 class="titulo text-4xl text-white">Bem-vindo de volta</h1>
-    <p class="mt-2 text-sm text-zinc-400">Entre com usuário e senha para reservar sua vaga.</p>
-  </div>
+<div class="mx-auto max-w-sm px-4 py-10 sm:py-16">
+  <h1 class="titulo text-3xl">Bem-vindo de volta</h1>
+  <p class="mt-2 text-lg text-gray-500">Entre com usuário e senha.</p>
 
-  <form method="post" class="vidro mt-8 space-y-5 rounded-3xl p-6">
+  <form method="post" class="mt-6 space-y-5">
     {% csrf_token %}
     {% if form.non_field_errors %}
-      <p class="rounded-2xl bg-rose-400/10 p-3 text-sm text-rose-200 ring-1 ring-inset ring-rose-400/30">{{ form.non_field_errors|join:" " }}</p>
+      <p class="rounded-2xl bg-red-50 p-4 text-base text-red-800">{{ form.non_field_errors|join:" " }}</p>
     {% endif %}
     {% include "arena/_campo.html" with campo=form.username %}
     {% include "arena/_campo.html" with campo=form.password %}
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit" class="botao-neon w-full py-3.5 text-base">Entrar</button>
+    <button type="submit" class="botao w-full">Entrar</button>
   </form>
 
-  <p class="mt-6 text-center text-sm text-zinc-500">
-    Sem senha? <a href="{% url 'arena:entrar_telefone' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-lime-300 hover:text-lime-200">Entrar com o celular</a>
+  <p class="mt-6 text-center text-base text-gray-500">
+    Sem senha? <a href="{% url 'arena:entrar_telefone' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-gray-900 underline underline-offset-4">Entrar com o celular</a>
   </p>
-  <p class="mt-2 text-center text-sm text-zinc-500">
-    Ainda não tem conta? <a href="{% url 'arena:cadastro' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-zinc-300 hover:text-white">Cadastre-se</a>
+  <p class="mt-2 text-center text-base text-gray-500">
+    Não tem conta? <a href="{% url 'arena:cadastro' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-gray-900 underline underline-offset-4">Cadastre-se</a>
   </p>
 </div>
 {% endblock %}

@@ -1,25 +1,22 @@
 {% extends "arena/base.html" %}
-{% load arena_extras %}
 
 {% block title %}Código de acesso{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-sm px-4 py-12 sm:py-16">
-  <div class="text-center">
-    <h1 class="titulo text-4xl text-white">Digite o código</h1>
-    <p class="mt-2 text-sm text-zinc-400">Enviamos um código de 6 dígitos para <strong class="text-white">{{ telefone }}</strong>. Ele vale por 10 minutos.</p>
-  </div>
+<div class="mx-auto max-w-sm px-4 py-10 sm:py-16">
+  <h1 class="titulo text-3xl">Digite o código</h1>
+  <p class="mt-2 text-lg text-gray-500">Enviamos 6 dígitos para <strong class="text-gray-900">{{ telefone }}</strong>. Vale por 10 minutos.</p>
 
-  <form method="post" class="vidro mt-8 space-y-5 rounded-3xl p-6">
+  <form method="post" class="mt-6 space-y-5">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ next }}">
     {% include "arena/_campo.html" with campo=form.codigo %}
     {% include "arena/_campo.html" with campo=form.nome %}
-    <button type="submit" class="botao-neon w-full py-3.5 text-base">Entrar</button>
+    <button type="submit" class="botao w-full">Entrar</button>
   </form>
 
-  <p class="mt-6 text-center text-sm text-zinc-500">
-    Não chegou? <a href="{% url 'arena:entrar_telefone' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-zinc-300 hover:text-white">Pedir outro código</a>
+  <p class="mt-6 text-center text-base text-gray-500">
+    Não chegou? <a href="{% url 'arena:entrar_telefone' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-gray-900 underline underline-offset-4">Pedir outro código</a>
   </p>
 </div>
 {% endblock %}

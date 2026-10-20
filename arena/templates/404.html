@@ -1,18 +1,16 @@
 {% load arena_extras %}<!doctype html>
-<html lang="pt-BR" class="bg-zinc-950">
+<html lang="pt-BR" class="bg-gray-50">
 <head>
   {% include "arena/_head.html" %}
   <title>Página não encontrada · ArenaMatch</title>
 </head>
-<body class="grid min-h-screen place-items-center bg-zinc-950 px-4 font-sans text-zinc-100 antialiased">
-  <main class="max-w-md text-center">
-    <p class="titulo text-8xl leading-none text-lime-400">404</p>
-    <h1 class="titulo mt-4 text-3xl text-white">Bola fora</h1>
-    <p class="mt-3 text-zinc-400">Esta página não existe ou mudou de lugar. Confira o endereço ou volte para as partidas.</p>
-    <div class="mt-8 flex flex-wrap justify-center gap-3">
-      <a href="{% url 'arena:vitrine' %}" class="botao-neon">Ver partidas</a>
-      <a href="{% url 'inicio' %}" class="botao-vidro">Página inicial</a>
-    </div>
+<body class="grid min-h-screen place-items-center bg-gray-50 px-4 font-sans text-gray-900 antialiased">
+  <main class="w-full max-w-sm text-center">
+    <p class="text-7xl font-extrabold text-gray-200">404</p>
+    <h1 class="titulo mt-2 text-3xl">Bola fora</h1>
+    <p class="mt-3 text-lg text-gray-500">Esta página não existe ou mudou de lugar.</p>
+    <a href="{% url 'arena:vitrine' %}" class="botao mt-8 w-full">Ver jogos</a>
+    <a href="{% url 'inicio' %}" class="mt-4 block text-base font-semibold text-gray-500 hover:text-gray-900">Página inicial</a>
   </main>
 </body>
 </html>

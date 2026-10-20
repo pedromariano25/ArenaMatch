@@ -5,44 +5,39 @@
 
 {% block content %}
 {% with horario=partida.time_slot %}
-<div class="mx-auto max-w-2xl px-4 py-8 sm:py-12">
-  <p class="text-xs font-bold uppercase tracking-widest text-cyan-300">Pós-jogo</p>
-  <h1 class="titulo mt-2 text-4xl text-white">Como foi o jogo?</h1>
-  <p class="mt-2 text-zinc-400">{{ horario.court.arena.nome }} · {{ horario.data|date:"d/m" }} · {{ horario.intervalo }} · {{ partida.get_nivel_competitividade_display }}</p>
+<div class="mx-auto max-w-lg px-4 py-6 sm:py-10">
+  <h1 class="titulo text-3xl">Como foi o jogo?</h1>
+  <p class="mt-2 text-gray-500">{{ partida.nome_exibido }} · {{ horario.data|date:"d/m" }} · {{ horario.intervalo }}</p>
 
-  <form method="post" class="vidro mt-8 space-y-8 rounded-3xl p-6">
+  <form method="post" class="mt-6 space-y-8">
     {% csrf_token %}
     <fieldset>
-      <legend class="text-sm font-bold text-zinc-200">{{ form.percepcao.label }}</legend>
-      <div class="mt-3 grid gap-2 sm:grid-cols-3">
+      <legend class="text-base font-semibold">{{ form.percepcao.label }}</legend>
+      <div class="mt-3 space-y-2">
         {% for opcao in form.percepcao %}
-          <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-zinc-200 has-[:checked]:border-cyan-400 has-[:checked]:bg-cyan-400/10 [&_input]:accent-cyan-400">{{ opcao.tag }} {{ opcao.choice_label }}</label>
+          <label class="opcao [&_input]:size-5 [&_input]:accent-gray-900">{{ opcao.tag }} {{ opcao.choice_label }}</label>
         {% endfor %}
       </div>
-      {% for erro in form.percepcao.errors %}<p class="mt-1 text-xs text-rose-300">{{ erro }}</p>{% endfor %}
+      {% for erro in form.percepcao.errors %}<p class="mt-1 text-sm text-red-600">{{ erro }}</p>{% endfor %}
     </fieldset>
 
     <fieldset>
-      <legend class="text-sm font-bold text-zinc-200">Elogie quem jogou bem <span class="font-normal text-zinc-500">(opcional)</span></legend>
-      <p class="mt-1 text-xs text-zinc-500">Só elogios: ninguém recebe nota negativa.{% if com_faixa %} Se alguém jogou muito fora do nível da partida, avise: isso ajusta o nível dele com o tempo.{% endif %}</p>
-      <ul class="mt-4 divide-y divide-white/5">
+      <legend class="text-base font-semibold">Elogie quem jogou bem <span class="font-normal text-gray-500">(opcional)</span></legend>
+      <p class="mt-1 text-sm text-gray-500">Só elogios: ninguém recebe nota negativa.{% if com_faixa %} Se alguém jogou muito fora do nível da partida, avise.{% endif %}</p>
+      <ul class="cartao mt-3 divide-y divide-gray-100">
         {% for colega in colegas %}
-          {# Com um seletor só, ele cabe ao lado do nome até no celular; com dois, desce no celular. #}
-          <li class="flex gap-3 py-3.5 {% if com_faixa %}flex-col sm:flex-row sm:items-center sm:justify-between{% else %}items-center justify-between{% endif %}">
-            <span class="flex min-w-0 items-center gap-3">
-              {% include "arena/_avatar.html" with usuario=colega.player tamanho="size-10" texto="text-xs" %}
-              <span class="min-w-0">
-                <span class="block truncate text-sm font-semibold text-white">{{ colega.player.nome_publico }}</span>
-                {% if colega.posicao == "goleiro" %}<span class="block text-xs text-cyan-300">goleiro</span>{% endif %}
-              </span>
+          <li class="flex flex-col gap-3 p-4">
+            <span class="flex items-center gap-3">
+              {% include "arena/_avatar.html" with usuario=colega.player tamanho="size-9" texto="text-xs" %}
+              <span class="text-base font-semibold">{{ colega.player.nome_publico }}{% if colega.posicao == "goleiro" %} <span class="font-normal text-gray-500">· goleiro</span>{% endif %}</span>
             </span>
-            <span class="flex shrink-0 gap-2">
-              <select name="elogio_{{ colega.player_id }}" class="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
+            <span class="grid gap-2 {% if com_faixa %}sm:grid-cols-2{% endif %}">
+              <select name="elogio_{{ colega.player_id }}" class="campo py-2.5 text-base">
                 <option value="">Sem elogio</option>
                 {% for valor, rotulo in tipos_elogio %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
               </select>
               {% if com_faixa %}
-                <select name="sinal_{{ colega.player_id }}" class="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
+                <select name="sinal_{{ colega.player_id }}" class="campo py-2.5 text-base">
                   <option value="">Nível ok</option>
                   {% for valor, rotulo in direcoes %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
                 </select>
@@ -53,7 +48,7 @@
       </ul>
     </fieldset>
 
-    <button type="submit" class="w-full rounded-full bg-cyan-400 px-5 py-4 text-base font-black text-zinc-950 transition hover:bg-cyan-300">Enviar avaliação</button>
+    <button type="submit" class="botao w-full">Enviar avaliação</button>
   </form>
 </div>
 {% endwith %}

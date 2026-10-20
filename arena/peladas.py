@@ -24,6 +24,7 @@ from django.utils import timezone
 
 from . import partidas, razao
 from .models import (
+    MEIA_NOITE,
     TAXA_C2C_MINIMA,
     TAXA_C2C_PERCENTUAL,
     Court,
@@ -42,6 +43,16 @@ from .models import (
 DIAS_DE_ANTECEDENCIA = 30
 # Prazo do mínimo (só usado na liberação da trava de nível: pelada de grupo não tem quórum).
 HORAS_PRAZO_PELADA = 3
+
+
+def termino_padrao(inicio: time) -> time:
+    """Uma hora depois do início (meia-noite, se passar dela)."""
+    uma_hora_depois = (datetime.combine(date.min, inicio) + timedelta(hours=1)).time()
+    return MEIA_NOITE if uma_hora_depois <= inicio else uma_hora_depois
+
+
+def titulo_padrao(organizador: AbstractBaseUser) -> str:
+    return f"Pelada do {organizador.first_name or organizador.username}"
 
 
 def _horario_do_grupo(quadra: Court, dia: date, inicio: time, fim: time) -> TimeSlot:

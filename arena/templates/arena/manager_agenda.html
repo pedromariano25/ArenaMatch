@@ -4,40 +4,30 @@
 {% block title %}Agenda{% endblock %}
 
 {% block content %}
-<div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+<div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
   <div>
-    <h1 class="titulo text-3xl text-white sm:text-5xl">Agenda</h1>
-    <p class="mt-2 text-sm text-zinc-400">Semana de {{ dias.0|date:"j \d\e F"|lower }} a {{ dias.6|date:"j \d\e F \d\e Y"|lower }}</p>
+    <h1 class="titulo text-3xl sm:text-4xl">Agenda</h1>
+    <p class="mt-2 text-lg text-gray-500">{{ dias.0|date:"j \d\e F"|lower }} a {{ dias.6|date:"j \d\e F"|lower }}</p>
   </div>
   {% if quadra %}
-    <div class="flex items-center gap-2 self-start lg:self-auto">
-      <a href="?semana={{ semana_anterior|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="botao-vidro px-2.5" title="Semana anterior">{% icone "anterior" "size-4" %}<span class="sr-only">Semana anterior</span></a>
-      <a href="?semana={{ semana_atual|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="botao-vidro">Esta semana</a>
-      <a href="?semana={{ proxima_semana|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="botao-vidro px-2.5" title="Próxima semana">{% icone "proximo" "size-4" %}<span class="sr-only">Próxima semana</span></a>
+    <div class="flex items-center gap-2">
+      <a href="?semana={{ semana_anterior|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="chip px-3 py-3" title="Semana anterior">{% icone "anterior" "size-5" %}<span class="sr-only">Semana anterior</span></a>
+      <a href="?semana={{ semana_atual|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="chip py-3">Esta semana</a>
+      <a href="?semana={{ proxima_semana|date:'Y-m-d' }}&amp;quadra={{ quadra.pk }}" class="chip px-3 py-3" title="Próxima semana">{% icone "proximo" "size-5" %}<span class="sr-only">Próxima semana</span></a>
     </div>
   {% endif %}
 </div>
 
 {% if quadra %}
-  <div class="mt-6 flex flex-col gap-4">
-    <nav class="flex max-w-full gap-2 overflow-x-auto [scrollbar-width:none]" aria-label="Quadras">
+  {% if quadras|length > 1 %}
+    <nav class="-mx-4 mt-6 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0" aria-label="Quadras">
       {% for opcao in quadras %}
-        <a href="?semana={{ dias.0|date:'Y-m-d' }}&amp;quadra={{ opcao.pk }}"{% if opcao == quadra %} aria-current="page"{% endif %} class="shrink-0 rounded-full px-4 py-2 text-sm font-bold transition {% if opcao == quadra %}bg-white text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">
-          {{ opcao.nome_ou_numero }} <span class="font-semibold text-zinc-500">{{ opcao.get_tipo_piso_display }}</span>
-        </a>
+        <a href="?semana={{ dias.0|date:'Y-m-d' }}&amp;quadra={{ opcao.pk }}"{% if opcao == quadra %} aria-current="page"{% endif %} class="chip {% if opcao == quadra %}chip-ativo{% endif %}">{{ opcao.nome_ou_numero }}</a>
       {% endfor %}
     </nav>
-    <ul class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-400" aria-label="Legenda da agenda">
-      {% for tipo, rotulo, quantidade in legenda %}
-        <li class="flex items-center gap-1.5">
-          <span class="size-2.5 rounded-sm {{ tipo|cor_marca }}" aria-hidden="true"></span>
-          {{ rotulo }} <span class="font-semibold text-zinc-600 tabular-nums">{{ quantidade }}</span>
-        </li>
-      {% endfor %}
-    </ul>
-  </div>
+  {% endif %}
 
-  <div class="vidro mt-4 overflow-hidden rounded-3xl">
+  <div class="cartao mt-4 overflow-hidden">
     <div class="overflow-x-auto">
       <table class="w-full min-w-[860px] table-fixed border-collapse">
         <caption class="sr-only">Agenda semanal de {{ quadra.nome_ou_numero }}</caption>
@@ -46,24 +36,22 @@
           {% for dia in dias %}<col>{% endfor %}
         </colgroup>
         <thead>
-          <tr class="border-b border-white/5">
-            <th scope="col" class="sticky left-0 z-10 bg-zinc-950 px-3 py-3 text-left text-xs font-semibold text-zinc-500">Horário</th>
+          <tr class="border-b border-gray-200">
+            <th scope="col" class="sticky left-0 z-10 bg-white px-3 py-3 text-left text-xs font-semibold text-gray-500">Horário</th>
             {% for dia in dias %}
               <th scope="col" class="px-2 py-3 text-center">
-                <span class="block text-xs font-bold {% if dia == hoje %}text-lime-300{% else %}text-zinc-500{% endif %}">{{ dia|date:"D"|capfirst }}</span>
-                <span class="titulo mt-1 inline-grid size-9 place-items-center rounded-full text-base {% if dia == hoje %}bg-lime-400 text-zinc-950{% else %}text-white{% endif %}">{{ dia|date:"d" }}</span>
+                <span class="block text-xs font-semibold text-gray-500">{{ dia|date:"D"|capfirst }}</span>
+                <span class="titulo mt-1 inline-grid size-9 place-items-center rounded-full text-base {% if dia == hoje %}bg-gray-900 text-white{% endif %}">{{ dia|date:"d" }}</span>
               </th>
             {% endfor %}
           </tr>
         </thead>
-        <tbody class="divide-y divide-white/5">
+        <tbody class="divide-y divide-gray-100">
           {% for linha in linhas %}
             <tr>
-              <th scope="row" class="sticky left-0 z-10 bg-zinc-950 px-3 py-2 text-left align-top text-xs font-bold text-zinc-400 tabular-nums">{{ linha.inicio|time:"H:i" }}</th>
+              <th scope="row" class="sticky left-0 z-10 bg-white px-3 py-2 text-left align-top text-sm font-semibold text-gray-500 tabular-nums">{{ linha.inicio|time:"H:i" }}</th>
               {% for celula in linha.celulas %}
-                <td class="p-1.5 align-top{% if celula.dia == hoje %} bg-lime-400/[0.03]{% endif %}">
-                  {% include "arena/_manager_celula.html" %}
-                </td>
+                <td class="p-1.5 align-top">{% include "arena/_manager_celula.html" %}</td>
               {% endfor %}
             </tr>
           {% endfor %}
@@ -72,7 +60,16 @@
     </div>
   </div>
 
-  <dialog id="dialogo-partida" class="m-0 mt-auto w-full max-w-none rounded-t-3xl border border-white/10 bg-zinc-900 p-0 text-zinc-100 backdrop:bg-black/70 backdrop:backdrop-blur-sm sm:m-auto sm:max-w-md sm:rounded-3xl">
+  <details class="mt-4 text-sm text-gray-500">
+    <summary class="cursor-pointer font-semibold hover:text-gray-900">Legenda</summary>
+    <ul class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Legenda da agenda">
+      {% for tipo, rotulo, quantidade in legenda %}
+        <li class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm {{ tipo|cor_marca }}" aria-hidden="true"></span> {{ rotulo }} <span class="font-semibold text-gray-900 tabular-nums">{{ quantidade }}</span></li>
+      {% endfor %}
+    </ul>
+  </details>
+
+  <dialog id="dialogo-partida" class="m-0 mt-auto w-full max-w-none rounded-t-3xl bg-white p-0 text-gray-900 backdrop:bg-gray-900/40 sm:m-auto sm:max-w-md sm:rounded-3xl">
     <form method="post" action="{% url 'gestor:abrir_partida' %}" class="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       {% csrf_token %}
       <input type="hidden" name="quadra" value="{{ quadra.pk }}">
@@ -81,47 +78,51 @@
       <input type="hidden" name="hora_fim">
       <input type="hidden" name="voltar" value="{{ request.get_full_path }}">
 
-      <h2 class="titulo text-2xl text-white">Partida aberta</h2>
-      <p class="mt-1 text-sm text-zinc-400"><span data-rotulo></span> na {{ quadra.nome_ou_numero }}</p>
+      <h2 class="titulo text-2xl">Abrir para o app</h2>
+      <p class="mt-1 text-base text-gray-500"><span data-rotulo></span> na {{ quadra.nome_ou_numero }}</p>
 
-      <div class="mt-5 grid grid-cols-2 gap-4">
-        <div>
-          <label for="campo-aluguel" class="block text-sm font-semibold text-zinc-300">Aluguel (R$)</label>
-          <input id="campo-aluguel" name="valor_total_aluguel" inputmode="decimal" required value="{{ aluguel_sugerido|floatformat:2 }}" class="campo mt-2">
-        </div>
-        <div>
-          <label for="campo-vagas" class="block text-sm font-semibold text-zinc-300">Vagas no total</label>
-          <input id="campo-vagas" name="vagas_totais" type="number" min="1" placeholder="{{ quadra.capacidade_padrao }}" class="campo mt-2">
-        </div>
-        <div>
-          <label for="campo-goleiros" class="block text-sm font-semibold text-zinc-300">Goleiros (grátis)</label>
-          <input id="campo-goleiros" name="vagas_goleiro" type="number" min="0" placeholder="{{ goleiros_sugeridos }}" class="campo mt-2">
-        </div>
-        <div>
-          <label for="campo-nivel" class="block text-sm font-semibold text-zinc-300">Nível</label>
-          <select id="campo-nivel" name="nivel_competitividade" class="campo mt-2">
-            {% for valor, rotulo in niveis %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
-          </select>
-        </div>
+      <label for="campo-aluguel" class="mt-6 block text-base font-semibold">Quanto a quadra recebe se lotar (R$)</label>
+      <input id="campo-aluguel" name="valor_total_aluguel" inputmode="decimal" required value="{{ aluguel_sugerido|floatformat:2 }}" class="campo mt-2">
+
+      <div class="mt-4 flex items-center justify-between rounded-2xl bg-gray-50 p-4">
+        <span class="text-base text-gray-500">Cada jogador paga</span>
+        <span class="titulo text-2xl" data-preco></span>
       </div>
+      <span hidden data-potencial></span>
 
-      <dl class="mt-5 space-y-2 rounded-2xl bg-lime-400/10 p-4 text-sm ring-1 ring-lime-400/30 ring-inset" data-contrato data-taxa="{{ arena.taxa_plataforma_percentual|stringformat:'s' }}" data-minima="{{ arena.taxa_minima|stringformat:'s' }}">
-        <div class="flex items-center justify-between"><dt class="text-zinc-300">Cada jogador paga (Pix)</dt><dd class="titulo text-lg text-white" data-preco></dd></div>
-        <div class="flex items-center justify-between"><dt class="text-zinc-300">A quadra recebe se lotar</dt><dd class="titulo text-lg text-lime-300" data-potencial></dd></div>
-      </dl>
-      <p class="mt-3 text-xs text-zinc-500">Os jogadores pagam pelo app. Se menos de {{ arena.quorum_percentual }}% das vagas estiverem pagas {{ arena.horas_prazo_quorum }}h antes do jogo, a partida é cancelada e todos recebem o dinheiro de volta.</p>
+      <details class="mt-4">
+        <summary class="cursor-pointer text-base font-semibold text-gray-500 hover:text-gray-900">Mais opções</summary>
+        <div class="mt-4 grid grid-cols-2 gap-4">
+          <div>
+            <label for="campo-vagas" class="block text-sm font-semibold">Vagas no total</label>
+            <input id="campo-vagas" name="vagas_totais" type="number" min="1" placeholder="{{ quadra.capacidade_padrao }}" class="campo mt-2">
+          </div>
+          <div>
+            <label for="campo-goleiros" class="block text-sm font-semibold">Goleiros (grátis)</label>
+            <input id="campo-goleiros" name="vagas_goleiro" type="number" min="0" placeholder="{{ goleiros_sugeridos }}" class="campo mt-2">
+          </div>
+          <div class="col-span-2">
+            <label for="campo-nivel" class="block text-sm font-semibold">Nível</label>
+            <select id="campo-nivel" name="nivel_competitividade" class="campo mt-2">
+              {% for valor, rotulo in niveis %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+        <p class="mt-3 text-sm text-gray-500">Se menos de {{ arena.quorum_percentual }}% das vagas estiverem pagas {{ arena.horas_prazo_quorum }}h antes do jogo, a partida é cancelada e todos recebem o dinheiro de volta.</p>
+      </details>
+      <div hidden data-contrato data-taxa="{{ arena.taxa_plataforma_percentual|stringformat:'s' }}" data-minima="{{ arena.taxa_minima|stringformat:'s' }}"></div>
 
       <div class="mt-6 flex gap-3">
-        <button type="button" data-fechar class="botao-vidro px-5 py-3">Voltar</button>
-        <button type="submit" class="botao-neon flex-1 py-3">Publicar no app</button>
+        <button type="button" data-fechar class="botao-secundario">Voltar</button>
+        <button type="submit" class="botao flex-1">Publicar</button>
       </div>
     </form>
   </dialog>
 {% else %}
-  <div class="vidro mt-8 rounded-3xl px-6 py-16 text-center">
-    <p class="titulo text-2xl text-white">Nenhuma quadra cadastrada</p>
-    <p class="mx-auto mt-2 max-w-sm text-sm text-zinc-400">Cadastre as quadras da arena para montar a agenda.</p>
-    <a href="{% url 'gestor:configuracoes' %}" class="botao-neon mt-6">Cadastrar quadra</a>
+  <div class="cartao mt-8 px-6 py-16 text-center">
+    <p class="text-xl font-bold">Nenhuma quadra cadastrada</p>
+    <p class="mx-auto mt-2 max-w-sm text-gray-500">Cadastre as quadras da arena para montar a agenda.</p>
+    <a href="{% url 'gestor:configuracoes' %}" class="botao mt-6 w-full sm:w-auto">Cadastrar quadra</a>
   </div>
 {% endif %}
 {% endblock %}

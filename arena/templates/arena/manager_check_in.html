@@ -4,69 +4,65 @@
 {% block title %}Check-in{% endblock %}
 
 {% block content %}
-<h1 class="titulo text-3xl text-white sm:text-5xl">Check-in de hoje</h1>
-<p class="mt-2 max-w-2xl text-sm text-zinc-400">Leia o QR do comprovante do jogador com a câmera do celular ou marque a presença aqui. Num jogo com check-in, quem não aparece leva falta.</p>
+<h1 class="titulo text-3xl sm:text-4xl">Check-in de hoje</h1>
+<p class="mt-2 max-w-xl text-lg text-gray-500">Leia o QR do jogador com a câmera do celular ou toque em "Chegou".</p>
 
 {% for item in partidas %}
   {% with partida=item.partida %}
-  <section class="vidro mt-8 rounded-3xl" aria-labelledby="partida-{{ partida.pk }}">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-5 py-4 sm:px-6">
-      <div>
-        <h2 id="partida-{{ partida.pk }}" class="titulo text-2xl text-white">{{ partida.time_slot.hora_inicio|time:"H:i" }} <span class="font-sans text-base font-bold text-zinc-400">{{ partida.time_slot.court.nome_ou_numero }}</span></h2>
-        <p class="mt-1 text-sm text-zinc-400">{{ partida.get_nivel_competitividade_display }}, {{ item.inscricoes|length }} confirmado{{ item.inscricoes|length|pluralize }}</p>
-      </div>
-      <span class="selo bg-white/5 text-zinc-300 ring-white/10">{{ partida.get_status_display }}</span>
+  <section class="cartao mt-6" aria-labelledby="partida-{{ partida.pk }}">
+    <div class="flex items-baseline justify-between gap-3 border-b border-gray-100 px-5 py-4">
+      <h2 id="partida-{{ partida.pk }}" class="titulo text-2xl">{{ partida.time_slot.hora_inicio|time:"H:i" }} <span class="text-base font-semibold text-gray-500">{{ partida.time_slot.court.nome_ou_numero }}</span></h2>
+      <p class="text-sm text-gray-500">{{ item.inscricoes|length }} confirmado{{ item.inscricoes|length|pluralize }}</p>
     </div>
-    <div class="grid gap-8 p-5 sm:p-6 lg:grid-cols-2">
-      <ul class="divide-y divide-white/5">
-        {% for inscricao in item.inscricoes %}
-          <li class="flex items-center justify-between gap-3 py-3">
-            <span class="flex min-w-0 items-center gap-3">
-              {% include "arena/_avatar.html" with usuario=inscricao.player tamanho="size-9" texto="text-xs" %}
-              <span class="min-w-0 text-sm">
-                <span class="block truncate font-bold text-white">{{ inscricao.player.get_full_name }}</span>
-                <span class="block text-xs text-zinc-400">{{ inscricao.get_posicao_display }}{% if inscricao.player.perfil %}, nível {{ inscricao.player.perfil.nivel }}{% endif %}</span>
-              </span>
+    <ul class="divide-y divide-gray-100 px-5">
+      {% for inscricao in item.inscricoes %}
+        <li class="flex items-center justify-between gap-3 py-3">
+          <span class="flex min-w-0 items-center gap-3">
+            {% include "arena/_avatar.html" with usuario=inscricao.player tamanho="size-10" texto="text-sm" %}
+            <span class="min-w-0">
+              <span class="block truncate text-base font-semibold">{{ inscricao.player.get_full_name }}</span>
+              <span class="block text-sm text-gray-500">{{ inscricao.get_posicao_display }}</span>
             </span>
-            {% if inscricao.check_in_em %}
-              <span class="selo shrink-0 bg-lime-400/15 text-lime-300 ring-lime-400/30">Chegou {{ inscricao.check_in_em|time:"H:i" }}</span>
-            {% elif inscricao.faltou %}
-              <span class="selo shrink-0 bg-rose-400/15 text-rose-300 ring-rose-400/30">Faltou</span>
-            {% else %}
-              <form method="post" class="shrink-0">
-                {% csrf_token %}
-                <input type="hidden" name="inscricao" value="{{ inscricao.pk }}">
-                <button type="submit" class="rounded-full bg-lime-400/10 px-3.5 py-2 text-xs font-bold text-lime-300 ring-1 ring-lime-400/40 transition ring-inset hover:bg-lime-400 hover:text-zinc-950">Marcar presença</button>
-              </form>
-            {% endif %}
-          </li>
-        {% empty %}
-          <li class="py-6 text-center text-sm text-zinc-500">Ninguém confirmado ainda.</li>
-        {% endfor %}
-      </ul>
-      <div>
-        <h3 class="font-bold text-white">Times sugeridos</h3>
-        <p class="mt-0.5 text-xs text-zinc-500">Divididos por nível e posição, para um jogo equilibrado.</p>
+          </span>
+          {% if inscricao.check_in_em %}
+            <span class="selo shrink-0 bg-bandeira-50 text-bandeira-700">Chegou {{ inscricao.check_in_em|time:"H:i" }}</span>
+          {% elif inscricao.faltou %}
+            <span class="selo shrink-0 bg-red-50 text-red-700">Faltou</span>
+          {% else %}
+            <form method="post" class="shrink-0">
+              {% csrf_token %}
+              <input type="hidden" name="inscricao" value="{{ inscricao.pk }}">
+              <button type="submit" aria-label="Marcar presença de {{ inscricao.player.get_full_name }}" class="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-bold hover:border-gray-900">Chegou</button>
+            </form>
+          {% endif %}
+        </li>
+      {% empty %}
+        <li class="py-6 text-center text-gray-500">Ninguém confirmado ainda.</li>
+      {% endfor %}
+    </ul>
+    {% if item.times %}
+      <details class="border-t border-gray-100 px-5 py-4">
+        <summary class="cursor-pointer text-base font-semibold text-gray-500 hover:text-gray-900">Times sugeridos</summary>
         <div class="mt-3 grid gap-3 sm:grid-cols-2">
           {% for time in item.times %}
-            <div class="rounded-2xl bg-white/[0.03] p-4 ring-1 ring-white/5 ring-inset">
-              <p class="text-sm font-bold text-white">{{ time.nome }} <span class="font-semibold text-zinc-500">força {{ time.forca }}</span></p>
-              <ul class="mt-2 space-y-1 text-sm text-zinc-300">
-                {% if time.goleiro %}<li class="text-cyan-300">🧤 {{ time.goleiro.player.nome_publico }}</li>{% endif %}
+            <div class="rounded-2xl bg-gray-50 p-4">
+              <p class="font-bold">{{ time.nome }} <span class="text-sm font-normal text-gray-500">força {{ time.forca }}</span></p>
+              <ul class="mt-2 space-y-1 text-gray-700">
+                {% if time.goleiro %}<li>🧤 {{ time.goleiro.player.nome_publico }}</li>{% endif %}
                 {% for inscricao in time.jogadores %}<li>{{ inscricao.player.nome_publico }}</li>{% endfor %}
               </ul>
             </div>
           {% endfor %}
         </div>
-      </div>
-    </div>
+      </details>
+    {% endif %}
   </section>
   {% endwith %}
 {% empty %}
-  <div class="vidro mt-8 rounded-3xl px-6 py-16 text-center">
-    <p class="titulo text-2xl text-white">Nenhuma partida aberta hoje</p>
-    <p class="mx-auto mt-2 max-w-sm text-sm text-zinc-400">As partidas do dia aparecem aqui com a lista de presença.</p>
-    <a href="{% url 'gestor:dashboard' %}#agenda" class="botao-neon mt-6">Publicar uma partida</a>
+  <div class="cartao mt-8 px-6 py-16 text-center">
+    <p class="text-xl font-bold">Nenhuma partida aberta hoje</p>
+    <p class="mx-auto mt-2 max-w-sm text-gray-500">As partidas do dia aparecem aqui com a lista de presença.</p>
+    <a href="{% url 'gestor:abrir_quadra' %}" class="botao mt-6 w-full sm:w-auto">Abrir quadra</a>
   </div>
 {% endfor %}
 {% endblock %}

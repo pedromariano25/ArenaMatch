@@ -23,31 +23,28 @@ from ..models import OpenMatch
 
 register = template.Library()
 
-# --- Tema escuro (app e portal) ---
+# --- Cores do tema claro (app e portal) ---
+# Ultra-minimalismo: quase tudo é cinza. A cor só aparece para sinalizar estado.
 
-_CLASSES_NIVEL_ESCURO = {
-    "aberta": "bg-violet-400/15 text-violet-300 ring-violet-400/30",
-    "iniciante": "bg-cyan-400/15 text-cyan-300 ring-cyan-400/30",
-    "intermediario": "bg-amber-400/15 text-amber-300 ring-amber-400/30",
-    "avancado": "bg-rose-400/15 text-rose-300 ring-rose-400/30",
+# Nível da partida: informação secundária, sempre neutra.
+_CLASSES_NIVEL = "bg-gray-100 text-gray-700"
+_CLASSES_STATUS_INSCRICAO = {
+    "confirmada": "bg-bandeira-50 text-bandeira-700",
+    "aguardando_pagamento": "bg-amber-50 text-amber-800",
+    "reembolsada": "bg-sky-50 text-sky-800",
+    "cancelada": "bg-gray-100 text-gray-600",
+    "expirada": "bg-gray-100 text-gray-600",
 }
-_CLASSES_INSCRICAO_ESCURO = {
-    "confirmada": "bg-lime-400/15 text-lime-300 ring-lime-400/30",
-    "aguardando_pagamento": "bg-amber-400/15 text-amber-300 ring-amber-400/30",
-    "reembolsada": "bg-cyan-400/15 text-cyan-300 ring-cyan-400/30",
-    "cancelada": "bg-white/5 text-zinc-400 ring-white/10",
-    "expirada": "bg-white/5 text-zinc-400 ring-white/10",
-}
-# Gradientes dos avatares: cada jogador tem sempre a mesma cor.
-_GRADIENTES_AVATAR = (
-    "from-lime-300 to-emerald-500",
-    "from-cyan-300 to-blue-500",
-    "from-fuchsia-300 to-purple-500",
-    "from-amber-200 to-orange-500",
-    "from-rose-300 to-pink-500",
-    "from-teal-200 to-cyan-500",
-    "from-indigo-300 to-violet-500",
-    "from-yellow-200 to-lime-400",
+# Avatares de iniciais: cada jogador tem sempre o mesmo tom pastel.
+_CORES_AVATAR = (
+    "bg-amber-100 text-amber-900",
+    "bg-sky-100 text-sky-900",
+    "bg-rose-100 text-rose-900",
+    "bg-teal-100 text-teal-900",
+    "bg-violet-100 text-violet-900",
+    "bg-lime-100 text-lime-900",
+    "bg-orange-100 text-orange-900",
+    "bg-indigo-100 text-indigo-900",
 )
 
 # Ícones no estilo Heroicons (outline, 24x24).
@@ -191,30 +188,30 @@ _ICONES = {
 # de legenda. Cada tipo tem cor e rótulo de texto; o horário livre também se
 # distingue pela borda tracejada, então a cor nunca é o único sinal.
 _CLASSES_BLOCO_CELULA = {
-    "mensalista": "border-cyan-400 bg-cyan-400/10",
-    "avulso": "border-amber-400 bg-amber-400/10",
-    "partida": "border-lime-400 bg-lime-400/10",
-    "lotada": "border-lime-400 bg-lime-400/15",
-    "pelada": "border-fuchsia-400 bg-fuchsia-400/10",
-    "bloqueado": "border-zinc-600 bg-white/5",
+    "mensalista": "border-sky-500 bg-sky-50",
+    "avulso": "border-amber-500 bg-amber-50",
+    "partida": "border-bandeira-600 bg-bandeira-50",
+    "lotada": "border-bandeira-600 bg-bandeira-50",
+    "pelada": "border-violet-500 bg-violet-50",
+    "bloqueado": "border-gray-400 bg-gray-100",
 }
 _CLASSES_SELO_CELULA = {
-    "mensalista": "bg-cyan-400/15 text-cyan-300 ring-cyan-400/30",
-    "avulso": "bg-amber-400/15 text-amber-300 ring-amber-400/30",
-    "partida": "bg-lime-400/15 text-lime-300 ring-lime-400/30",
-    "lotada": "bg-lime-400 text-zinc-950 ring-lime-400",
-    "pelada": "bg-fuchsia-400/15 text-fuchsia-300 ring-fuchsia-400/30",
-    "bloqueado": "bg-white/10 text-zinc-300 ring-white/15",
-    "vago": "bg-white/5 text-zinc-400 ring-white/10",
+    "mensalista": "bg-sky-100 text-sky-900",
+    "avulso": "bg-amber-100 text-amber-900",
+    "partida": "bg-bandeira-100 text-bandeira-700",
+    "lotada": "bg-bandeira-600 text-white",
+    "pelada": "bg-violet-100 text-violet-900",
+    "bloqueado": "bg-gray-200 text-gray-700",
+    "vago": "bg-gray-100 text-gray-600",
 }
 _COR_MARCA_CELULA = {
-    "mensalista": "bg-cyan-400",
-    "avulso": "bg-amber-400",
-    "partida": "bg-lime-400",
-    "lotada": "bg-lime-400",
-    "pelada": "bg-fuchsia-400",
-    "bloqueado": "bg-zinc-500",
-    "vago": "border border-dashed border-lime-400/70",
+    "mensalista": "bg-sky-500",
+    "avulso": "bg-amber-500",
+    "partida": "bg-bandeira-600",
+    "lotada": "bg-bandeira-600",
+    "pelada": "bg-violet-500",
+    "bloqueado": "bg-gray-400",
+    "vago": "border border-dashed border-gray-400",
 }
 # Menu do portal do gestor: seção (``secao`` da view), rota, rótulo e ícone.
 _MENU_GESTOR = (
@@ -354,30 +351,31 @@ def link_google_agenda(partida: OpenMatch) -> str:
     return "https://calendar.google.com/calendar/render?" + urlencode(parametros)
 
 
-# --- Tema escuro (app e portal) ---
+# --- Tema claro (app e portal) ---
 
 
 @register.filter
-def estilizar_escuro(campo: BoundField) -> SafeString:
-    """Widget no estilo escuro (componente ``campo`` do CSS), usado no app e no portal."""
+def estilizar(campo: BoundField) -> SafeString:
+    """Widget no estilo do produto (componente ``campo`` do CSS), usado no app e no portal."""
     return campo.as_widget(attrs={"class": "campo campo-erro" if campo.errors else "campo"})
 
 
 @register.filter
-def nivel_escuro(nivel: str) -> str:
-    return _CLASSES_NIVEL_ESCURO.get(nivel, _CLASSES_NIVEL_ESCURO["aberta"])
+def classes_nivel(nivel: str) -> str:
+    return _CLASSES_NIVEL
 
 
 @register.filter
-def inscricao_escuro(status: str) -> str:
-    return _CLASSES_INSCRICAO_ESCURO.get(status, _CLASSES_INSCRICAO_ESCURO["cancelada"])
+def classes_status(status: str) -> str:
+    """Cor do selo de status de uma inscrição."""
+    return _CLASSES_STATUS_INSCRICAO.get(status, _CLASSES_STATUS_INSCRICAO["cancelada"])
 
 
 @register.filter
 def cor_avatar(usuario: object) -> str:
-    """Gradiente fixo por jogador (derivado do id), para os avatares de iniciais."""
+    """Tom pastel fixo por jogador (derivado do id), para os avatares de iniciais."""
     chave = str(getattr(usuario, "pk", usuario) or "")
-    return _GRADIENTES_AVATAR[sum(map(ord, chave)) % len(_GRADIENTES_AVATAR)]
+    return _CORES_AVATAR[sum(map(ord, chave)) % len(_CORES_AVATAR)]
 
 
 @register.filter

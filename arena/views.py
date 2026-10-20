@@ -758,7 +758,7 @@ class NovaPeladaView(LoginRequiredMixin, FormView):
                 dados["dia"],
                 dados["hora_inicio"],
                 dados["hora_fim"],
-                titulo=dados["titulo"],
+                titulo=dados["titulo"] or peladas.titulo_padrao(self.request.user),
                 vagas_linha=dados["vagas_linha"],
                 valor_por_vaga=dados["valor_por_vaga"],
                 vagas_goleiro=dados["vagas_goleiro"],
@@ -865,13 +865,25 @@ class GestorRequiredMixin(LoginRequiredMixin):
 
 
 class GestorDashboardView(GestorRequiredMixin, TemplateView):
-    """Painel: três números (saldo, vagas vendidas, horários ociosos) e a agenda do dia.
-
-    Na agenda, um toque num horário ocioso publica a partida com os valores
-    sugeridos; ``?dia=AAAA-MM-DD`` escolhe um dos próximos 7 dias.
-    """
+    """Início do portal: os números do dinheiro e o botão "Abrir quadra"."""
 
     template_name = "arena/manager_dashboard.html"
+    secao = "dashboard"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        contexto = super().get_context_data(**kwargs)
+        dias, grades = gestao.semana_da_arena(self.arena)
+        contexto.update(indicadores=gestao.indicadores_dashboard(self.arena, grades), hoje=dias[0])
+        return contexto
+
+
+class GestorAbrirQuadraView(GestorRequiredMixin, TemplateView):
+    """Horários livres do dia por quadra: um toque publica a partida com os valores sugeridos.
+
+    ``?dia=AAAA-MM-DD`` escolhe um dos próximos 7 dias.
+    """
+
+    template_name = "arena/manager_abrir_quadra.html"
     secao = "dashboard"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
@@ -882,7 +894,6 @@ class GestorDashboardView(GestorRequiredMixin, TemplateView):
         except ValueError:
             indice = 0
         contexto.update(
-            indicadores=gestao.indicadores_dashboard(self.arena, grades),
             dias=gestao.dias_do_painel(dias, grades),
             dia=dias[indice],
             quadras_do_dia=gestao.agenda_do_dia(grades, indice),

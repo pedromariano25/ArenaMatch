@@ -4,95 +4,90 @@
 {% block title %}Financeiro{% endblock %}
 
 {% block content %}
-<h1 class="titulo text-3xl text-white sm:text-5xl">Financeiro</h1>
-<p class="mt-2 max-w-2xl text-sm text-zinc-400">Os jogadores pagam pelo app. O valor da quadra fica guardado até o dia seguinte ao jogo e depois é transferido para a sua conta, sem você pedir.</p>
+<h1 class="titulo text-3xl sm:text-4xl">Financeiro</h1>
+<p class="mt-2 max-w-xl text-lg text-gray-500">O valor da quadra cai na sua conta sozinho, no dia seguinte a cada jogo.</p>
 
-<dl class="mt-8 grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
-  <div class="vidro rounded-3xl p-5">
-    <dt class="text-sm font-bold text-zinc-400">Liberado</dt>
-    <dd class="titulo mt-2 text-3xl whitespace-nowrap text-lime-300 tabular-nums">{{ resumo.disponivel|brl }}</dd>
-    <dd class="mt-1 text-sm text-zinc-500">Vai para a sua conta na próxima transferência</dd>
+<dl class="mt-8 grid gap-3 sm:grid-cols-2">
+  <div class="cartao p-6">
+    <dt class="text-lg text-gray-500">Liberado</dt>
+    <dd class="titulo mt-1 text-4xl tabular-nums">{{ resumo.disponivel|brl }}</dd>
+    <dd class="mt-1 text-base text-gray-500">Vai na próxima transferência</dd>
   </div>
-  <div class="vidro rounded-3xl p-5">
-    <dt class="text-sm font-bold text-zinc-400">A liberar</dt>
-    <dd class="titulo mt-2 text-3xl whitespace-nowrap text-white tabular-nums">{{ resumo.a_liberar|brl }}</dd>
-    <dd class="mt-1 text-sm text-zinc-500">Vagas pagas de jogos que ainda vão acontecer</dd>
-  </div>
-  <div class="vidro rounded-3xl p-5">
-    <dt class="text-sm font-bold text-zinc-400">Transferido no mês</dt>
-    <dd class="titulo mt-2 text-3xl whitespace-nowrap text-white tabular-nums">{{ resumo.repassado_mes|brl }}</dd>
-    <dd class="mt-1 text-sm text-zinc-500">Já está na conta da arena</dd>
-  </div>
-  <div class="vidro rounded-3xl p-5">
-    <dt class="text-sm font-bold text-zinc-400">Vendido no mês</dt>
-    <dd class="titulo mt-2 text-3xl whitespace-nowrap text-white tabular-nums">{{ resumo.vendido_mes|brl }}</dd>
-    <dd class="mt-1 text-sm text-zinc-500">Valor da quadra nos jogos do mês, já sem as devoluções</dd>
+  <div class="cartao p-6">
+    <dt class="text-lg text-gray-500">A liberar</dt>
+    <dd class="titulo mt-1 text-4xl tabular-nums">{{ resumo.a_liberar|brl }}</dd>
+    <dd class="mt-1 text-base text-gray-500">De jogos que ainda vão acontecer</dd>
   </div>
 </dl>
 
-<div class="mt-10 grid gap-6 xl:grid-cols-3">
-  <section class="min-w-0 xl:col-span-2" aria-labelledby="titulo-extrato">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <h2 id="titulo-extrato" class="titulo text-2xl text-white">Extrato</h2>
-      <form method="get" class="sm:w-48">
-        <input type="hidden" name="tipo" value="{{ tipo }}">
-        <label for="filtro-periodo" class="sr-only">Período</label>
-        <select id="filtro-periodo" name="periodo" onchange="this.form.submit()" class="campo py-2 text-sm">
-          {% for valor, rotulo in periodos %}<option value="{{ valor }}"{% if valor == periodo %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
-        </select>
-      </form>
-    </div>
-    <nav class="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0" aria-label="Tipo de movimentação">
-      {% for valor, rotulo in filtros_tipo %}
-        <a href="?tipo={{ valor }}&amp;periodo={{ periodo }}"{% if valor == tipo %} aria-current="page"{% endif %} class="shrink-0 rounded-full px-4 py-2 text-sm font-bold transition {% if valor == tipo %}bg-white text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
-      {% endfor %}
-    </nav>
+<details class="cartao mt-3 p-6">
+  <summary class="cursor-pointer text-base font-semibold text-gray-500 hover:text-gray-900">Mês atual</summary>
+  <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+    <div><dt class="text-gray-500">Transferido no mês</dt><dd class="titulo mt-1 text-2xl tabular-nums">{{ resumo.repassado_mes|brl }}</dd></div>
+    <div><dt class="text-gray-500">Vendido no mês</dt><dd class="titulo mt-1 text-2xl tabular-nums">{{ resumo.vendido_mes|brl }}</dd></div>
+  </dl>
+</details>
 
-    <div class="vidro mt-4 rounded-3xl">
-      {% if pagina.object_list %}
-        <ul class="divide-y divide-white/5">
-          {% for lancamento in pagina.object_list %}
-            <li class="flex items-start justify-between gap-4 px-5 py-4">
-              <div class="min-w-0">
-                <p class="font-bold text-white">{{ lancamento|rotulo_lancamento }}</p>
-                {% if lancamento.tipo != "repasse" %}<p class="mt-0.5 truncate text-sm text-zinc-400">{{ lancamento.descricao }}</p>{% endif %}
-                <p class="mt-1 text-xs text-zinc-500 tabular-nums">{{ lancamento.created_at|date:"d/m H:i" }}</p>
-              </div>
-              <div class="shrink-0 text-right">
-                <p class="font-bold tabular-nums {% if lancamento.valor < 0 %}text-zinc-400{% else %}text-white{% endif %}">{{ lancamento.valor|brl }}</p>
-                {% if lancamento.disponivel_em > agora %}<span class="selo mt-1 bg-amber-400/15 text-amber-300 ring-amber-400/30">Libera {{ lancamento.disponivel_em|date:"d/m" }}</span>{% endif %}
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-        {% if pagina.has_other_pages %}
-          <div class="flex items-center justify-between gap-3 border-t border-white/5 px-5 py-3 text-sm text-zinc-500">
-            <p>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</p>
-            <div class="flex gap-2">
-              {% if pagina.has_previous %}<a href="?tipo={{ tipo }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.previous_page_number }}" class="botao-vidro">Anterior</a>{% endif %}
-              {% if pagina.has_next %}<a href="?tipo={{ tipo }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.next_page_number }}" class="botao-vidro">Próxima</a>{% endif %}
+<section class="mt-10" aria-labelledby="titulo-extrato">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <h2 id="titulo-extrato" class="titulo text-2xl">Extrato</h2>
+    <form method="get" class="sm:w-48">
+      <input type="hidden" name="tipo" value="{{ tipo }}">
+      <label for="filtro-periodo" class="sr-only">Período</label>
+      <select id="filtro-periodo" name="periodo" onchange="this.form.submit()" class="campo py-2 text-base">
+        {% for valor, rotulo in periodos %}<option value="{{ valor }}"{% if valor == periodo %} selected{% endif %}>{{ rotulo }}</option>{% endfor %}
+      </select>
+    </form>
+  </div>
+  <nav class="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0" aria-label="Tipo de movimentação">
+    {% for valor, rotulo in filtros_tipo %}
+      <a href="?tipo={{ valor }}&amp;periodo={{ periodo }}"{% if valor == tipo %} aria-current="page"{% endif %} class="chip {% if valor == tipo %}chip-ativo{% endif %}">{{ rotulo }}</a>
+    {% endfor %}
+  </nav>
+
+  <div class="cartao mt-4">
+    {% if pagina.object_list %}
+      <ul class="divide-y divide-gray-100">
+        {% for lancamento in pagina.object_list %}
+          <li class="flex items-start justify-between gap-4 px-5 py-4">
+            <div class="min-w-0">
+              <p class="font-semibold">{{ lancamento|rotulo_lancamento }}</p>
+              {% if lancamento.tipo != "repasse" %}<p class="mt-0.5 truncate text-sm text-gray-500">{{ lancamento.descricao }}</p>{% endif %}
+              <p class="mt-1 text-sm text-gray-400 tabular-nums">{{ lancamento.created_at|date:"d/m H:i" }}</p>
             </div>
+            <div class="shrink-0 text-right">
+              <p class="font-bold tabular-nums {% if lancamento.valor < 0 %}text-gray-500{% endif %}">{{ lancamento.valor|brl }}</p>
+              {% if lancamento.disponivel_em > agora %}<span class="selo mt-1 bg-amber-50 text-amber-800">Libera {{ lancamento.disponivel_em|date:"d/m" }}</span>{% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if pagina.has_other_pages %}
+        <div class="flex items-center justify-between gap-3 border-t border-gray-100 px-5 py-3 text-sm text-gray-500">
+          <p>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</p>
+          <div class="flex gap-2">
+            {% if pagina.has_previous %}<a href="?tipo={{ tipo }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.previous_page_number }}" class="chip">Anterior</a>{% endif %}
+            {% if pagina.has_next %}<a href="?tipo={{ tipo }}&amp;periodo={{ periodo }}&amp;pagina={{ pagina.next_page_number }}" class="chip">Próxima</a>{% endif %}
           </div>
-        {% endif %}
-      {% else %}
-        <p class="px-5 py-14 text-center text-sm text-zinc-500">Nada por aqui com estes filtros.</p>
+        </div>
       {% endif %}
-    </div>
-  </section>
+    {% else %}
+      <p class="px-5 py-14 text-center text-gray-500">Nada por aqui com estes filtros.</p>
+    {% endif %}
+  </div>
+</section>
 
-  <section class="min-w-0" aria-labelledby="titulo-repasses">
-    <h2 id="titulo-repasses" class="titulo text-2xl text-white">Transferências</h2>
-    <p class="mt-1 text-sm text-zinc-400">O que já foi para a conta da arena.</p>
-    <ul class="vidro mt-4 divide-y divide-white/5 rounded-3xl">
-      {% for repasse in repasses %}
-        <li class="flex items-center justify-between gap-3 px-5 py-4 text-sm">
-          <span class="text-zinc-300 tabular-nums">{{ repasse.created_at|date:"d/m/Y H:i" }}</span>
-          <span class="font-bold text-lime-300 tabular-nums">{{ repasse.valor|brl }}</span>
-        </li>
-      {% empty %}
-        <li class="px-5 py-10 text-center text-sm text-zinc-500">A primeira transferência sai no dia seguinte ao primeiro jogo.</li>
-      {% endfor %}
-    </ul>
-  </section>
-</div>
+<details class="mt-6">
+  <summary class="cursor-pointer text-base font-semibold text-gray-500 hover:text-gray-900">Transferências para a sua conta</summary>
+  <ul class="cartao mt-3 divide-y divide-gray-100">
+    {% for repasse in repasses %}
+      <li class="flex items-center justify-between gap-3 px-5 py-4">
+        <span class="text-gray-600 tabular-nums">{{ repasse.created_at|date:"d/m/Y H:i" }}</span>
+        <span class="font-bold tabular-nums">{{ repasse.valor|brl }}</span>
+      </li>
+    {% empty %}
+      <li class="px-5 py-10 text-center text-gray-500">A primeira transferência sai no dia seguinte ao primeiro jogo.</li>
+    {% endfor %}
+  </ul>
+</details>
 {% endblock %}

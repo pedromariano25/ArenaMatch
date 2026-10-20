@@ -2,8 +2,8 @@
 {% menu_gestor as itens %}
 {% for chave, url, rotulo, nome_icone in itens %}
   {% if estilo == "inferior" %}
-    <a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex flex-col items-center gap-1 py-2.5 transition {% if secao == chave %}text-lime-400{% else %}text-zinc-400 hover:text-white{% endif %}">{% icone nome_icone "size-6" %} {{ rotulo }}</a>
+    <a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex flex-col items-center gap-1 py-3 {% if secao == chave %}text-gray-900{% else %}text-gray-400{% endif %}">{% icone nome_icone "size-6" %} {{ rotulo }}</a>
   {% else %}
-    <a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition {% if secao == chave %}bg-lime-400/10 text-lime-300 ring-1 ring-lime-400/20 ring-inset{% else %}text-zinc-400 hover:bg-white/5 hover:text-white{% endif %}">{% icone nome_icone "size-5 shrink-0" %} {{ rotulo }}</a>
+    <a href="{{ url }}"{% if secao == chave %} aria-current="page"{% endif %} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-base font-semibold {% if secao == chave %}bg-gray-100 text-gray-900{% else %}text-gray-500 hover:bg-gray-50 hover:text-gray-900{% endif %}">{% icone nome_icone "size-5 shrink-0" %} {{ rotulo }}</a>
   {% endif %}
 {% endfor %}

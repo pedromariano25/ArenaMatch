@@ -1,5 +1,6 @@
 """Serializers da API B2C (app mobile e vitrine web)."""
 
+from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth.password_validation import validate_password
@@ -7,20 +8,24 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 
+from .. import peladas
 from ..jogadores import EXPERIENCIAS, FREQUENCIAS
-
 from ..models import (
+    MEIA_NOITE,
     Arena,
     Booking,
     Court,
     CustomUser,
     LedgerEntry,
     MetodoPagamento,
+    NivelCompetitividade,
     OpenMatch,
     Payment,
     PlayerProfile,
     Posicao,
+    Saque,
     StatusPagamento,
+    StatusPartida,
 )
 
 
@@ -314,3 +319,82 @@ class CadastroJogadorSerializer(serializers.ModelSerializer):
     def get_token(self, usuario: CustomUser) -> str:
         token, _ = Token.objects.get_or_create(user=usuario)
         return token.key
+
+
+# --- Login pelo celular ----------------------------------------------------------
+
+
+class SolicitarCodigoSerializer(serializers.Serializer):
+    """Passo 1: o celular (com DDD) que recebe o código por SMS."""
+
+    telefone = serializers.CharField(max_length=20)
+
+
+class VerificarCodigoSerializer(serializers.Serializer):
+    """Passo 2: o código recebido. ``nome`` só é usado no primeiro acesso (cria a conta)."""
+
+    telefone = serializers.CharField(max_length=20)
+    codigo = serializers.CharField(max_length=10)
+    nome = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+
+
+# --- Pelada de grupo (C2C) ---------------------------------------------------------
+
+
+class NovaPeladaSerializer(serializers.Serializer):
+    """Vagas que faltam na pelada do grupo. Obrigatórios: quadra, dia, horário, vagas e valor."""
+
+    quadra = serializers.PrimaryKeyRelatedField(queryset=Court.objects.select_related("arena"))
+    dia = serializers.DateField()
+    hora_inicio = serializers.TimeField()
+    hora_fim = serializers.TimeField(required=False, help_text="Padrão: 1 hora depois do início.")
+    vagas_linha = serializers.IntegerField(min_value=1, max_value=20)
+    valor_por_vaga = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        min_value=Decimal("1.00"),
+        max_value=Decimal("500.00"),
+        help_text="Quanto o organizador recebe por vaga (o jogador paga isso mais a taxa).",
+    )
+    titulo = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
+    nivel = serializers.ChoiceField(choices=NivelCompetitividade.choices, default=NivelCompetitividade.ABERTA)
+    vagas_goleiro = serializers.IntegerField(min_value=0, max_value=2, default=0)
+    valor_goleiro = serializers.DecimalField(
+        max_digits=6, decimal_places=2, min_value=Decimal("0"), max_value=Decimal("500.00"), default=Decimal("0")
+    )
+
+    def validate(self, dados: dict[str, Any]) -> dict[str, Any]:
+        inicio = dados["hora_inicio"]
+        fim = dados.setdefault("hora_fim", peladas.termino_padrao(inicio))
+        if fim <= inicio and fim != MEIA_NOITE:
+            raise serializers.ValidationError({"hora_fim": "O horário de término precisa ser depois do início."})
+        return dados
+
+
+class PeladaDoOrganizadorSerializer(PartidaSerializer):
+    """Pelada vista pelo organizador: quanto ele recebe e se ainda pode cancelar."""
+
+    recebe_por_vaga = serializers.DecimalField(
+        source="preco_vaga_base", max_digits=10, decimal_places=2, read_only=True
+    )
+    arrecadado = serializers.SerializerMethodField(help_text="Soma do que o organizador recebe pelas vagas pagas.")
+    em_pagamento = serializers.IntegerField(read_only=True, default=0)
+    pode_cancelar = serializers.SerializerMethodField()
+
+    class Meta(PartidaSerializer.Meta):
+        fields = (*PartidaSerializer.Meta.fields, "recebe_por_vaga", "arrecadado", "em_pagamento", "pode_cancelar")
+
+    def get_arrecadado(self, pelada: OpenMatch) -> str:
+        return str(getattr(pelada, "arrecadado", None) or Decimal("0.00"))
+
+    def get_pode_cancelar(self, pelada: OpenMatch) -> bool:
+        return pelada.status in (StatusPartida.ABERTA, StatusPartida.LOTADA) and not pelada.time_slot.ja_comecou
+
+
+class SaqueSerializer(serializers.ModelSerializer):
+    """Saque via Pix do saldo do organizador."""
+
+    class Meta:
+        model = Saque
+        fields = ("id", "valor", "tipo_chave_pix", "chave_pix", "status", "created_at")
+        read_only_fields = fields

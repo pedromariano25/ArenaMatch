@@ -1,6 +1,8 @@
 /*
- * Fonte do CSS do ArenaMatch (Tailwind CSS v4), compartilhado pelo site, pelo app
- * do jogador e pelo Portal do Gestor.
+ * Fonte do CSS do ArenaMatch (Tailwind CSS v4): site, app do jogador e portal da arena.
+ *
+ * Design "ultra-minimalismo transacional": fundo claro, texto quase preto, uma
+ * única cor forte (verde bandeira) reservada à ação principal de cada tela.
  *
  * Gere o arquivo final com:  python manage.py compilar_css   (--watch enquanto edita)
  * Saída: arena/static/arena/css/arena.css (versionada; o deploy também recompila).
@@ -14,67 +16,71 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Archivo", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Verde bandeira. O 600 é o fundo dos botões: contraste AA com texto branco. */
+  --color-bandeira-50: #eaf6ee;
+  --color-bandeira-100: #cdebd8;
+  --color-bandeira-500: #009c3b;
+  --color-bandeira-600: #00873a;
+  --color-bandeira-700: #006f30;
 }
 
-/* Vidro: superfícies translúcidas sobre o fundo escuro. */
-@utility vidro {
-  background-color: rgb(255 255 255 / 0.04);
-  border: 1px solid rgb(255 255 255 / 0.08);
-  backdrop-filter: blur(18px);
-}
-
-/* Brilho neon dos botões de ação principal. */
-@utility neon {
-  box-shadow: 0 0 0 1px rgb(163 230 53 / 0.5), 0 10px 40px -8px rgb(163 230 53 / 0.55);
-}
-
-/* Títulos e números de destaque: Archivo larga e extra-negrita. */
+/* Títulos e números de destaque. */
 @utility titulo {
-  font-family: var(--font-display);
-  font-stretch: 112%;
-  font-weight: 900;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: -0.025em;
 }
 
 @layer base {
   :focus-visible {
-    outline: 2px solid var(--color-lime-400);
+    outline: 2px solid var(--color-gray-900);
     outline-offset: 2px;
   }
 }
 
 /*
  * Componentes: só o que se repete em várias telas. Tamanho e margem ficam nos
- * utilitários de cada uso (ex.: "botao-neon w-full py-4 text-base"), que têm
- * prioridade sobre esta camada.
+ * utilitários de cada uso (ex.: "botao w-full"), que têm prioridade sobre esta camada.
  */
 @layer components {
-  /* Ação principal: verde-limão com brilho. */
-  .botao-neon {
-    @apply inline-flex items-center justify-center gap-2 rounded-full bg-lime-400 px-5 py-2.5 text-sm font-black text-zinc-950 transition hover:bg-lime-300 neon;
+  /* Ação principal da tela: a única coisa verde. */
+  .botao {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl bg-bandeira-600 px-6 py-4 text-lg font-bold text-white transition hover:bg-bandeira-700 disabled:cursor-not-allowed disabled:opacity-40;
   }
 
-  /* Ação secundária sobre o fundo escuro. */
-  .botao-vidro {
-    @apply inline-flex items-center justify-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm font-bold text-zinc-200 ring-1 ring-white/10 transition ring-inset hover:bg-white/10 hover:text-white;
+  /* Ação secundária: contorno, sem cor. */
+  .botao-secundario {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-300 bg-white px-6 py-4 text-lg font-bold text-gray-900 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40;
   }
 
-  /* Campo de formulário escuro (aplicado pelo filtro estilizar_escuro). */
+  /* Superfície padrão (cartões, listas, formulários). */
+  .cartao {
+    @apply rounded-2xl border border-gray-200 bg-white;
+  }
+
+  /* Campo de formulário (aplicado pelo filtro estilizar). */
   .campo {
-    @apply block w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-500 focus:border-lime-400 focus:ring-2 focus:ring-lime-400/30 focus:outline-none;
-    /* Calendário e relógio nativos (data e hora) no tema escuro. */
-    color-scheme: dark;
+    @apply block w-full rounded-xl border border-gray-300 bg-white px-4 py-3.5 text-lg text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 focus:outline-none;
   }
   .campo-erro {
-    @apply border-rose-400/60;
-  }
-  select.campo {
-    @apply bg-zinc-900;
+    @apply border-red-500;
   }
 
-  /* Selo (badge) arredondado; a cor vem dos filtros de status e nível. */
+  /* Selo (badge) discreto; a cor, quando há, vem dos filtros de status. */
   .selo {
-    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  /* Opção de escolha em cartão (rádio): o selecionado ganha borda escura. */
+  .opcao {
+    @apply flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-base font-semibold text-gray-900 transition hover:border-gray-400 has-[:checked]:border-gray-900 has-[:checked]:ring-1 has-[:checked]:ring-gray-900;
+  }
+
+  /* Aba ou filtro de um toque. */
+  .chip {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400;
+  }
+  .chip-ativo {
+    @apply border-gray-900 bg-gray-900 text-white hover:border-gray-900;
   }
 }

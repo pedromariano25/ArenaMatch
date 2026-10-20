@@ -1,154 +1,90 @@
 {% load arena_extras %}<!doctype html>
-<html lang="pt-BR" class="scroll-smooth bg-zinc-950">
+<html lang="pt-BR" class="scroll-smooth bg-white">
 <head>
   {% include "arena/_head.html" %}
   <title>ArenaMatch · Futebol perto de você, pago pelo app</title>
 </head>
-<body class="min-h-screen bg-zinc-950 font-sans text-zinc-100 antialiased selection:bg-lime-400 selection:text-zinc-950">
-  <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-    <div class="absolute -top-56 left-1/2 h-[36rem] w-[72rem] -translate-x-1/2 rounded-full bg-lime-400/15 blur-3xl"></div>
-    <div class="absolute top-[40rem] -left-40 h-[28rem] w-[28rem] rounded-full bg-cyan-400/10 blur-3xl"></div>
-    <div class="absolute inset-0 bg-[linear-gradient(rgb(255_255_255/0.03)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255/0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"></div>
-  </div>
-
-  <header class="sticky top-0 z-40 border-b border-white/5 bg-zinc-950/60 backdrop-blur-xl">
-    <nav class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-      <a href="{% url 'inicio' %}" class="flex items-center gap-2.5">
-        <span class="grid size-9 place-items-center rounded-xl bg-lime-400 text-zinc-950 neon">{% icone "bola" "size-5" %}</span>
-        <span class="titulo text-lg text-white">ARENA<span class="text-lime-400">MATCH</span></span>
+<body class="min-h-screen bg-white font-sans text-gray-900 antialiased">
+  <header class="border-b border-gray-200">
+    <nav class="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
+      <a href="{% url 'inicio' %}" class="flex items-center gap-2">
+        <span class="grid size-8 place-items-center rounded-lg bg-bandeira-600 text-white">{% icone "bola" "size-5" %}</span>
+        <span class="text-lg font-extrabold tracking-tight">ArenaMatch</span>
       </a>
-      <div class="hidden items-center gap-1 text-sm font-semibold md:flex">
-        <a href="#como-funciona" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Como funciona</a>
-        <a href="#arenas" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Para arenas</a>
-        <a href="{% url 'arena:vitrine' %}" class="rounded-full px-4 py-2 text-zinc-300 transition hover:bg-white/5 hover:text-white">Jogos</a>
+      <div class="flex items-center gap-1 text-sm font-semibold">
+        <a href="#arenas" class="hidden rounded-lg px-3 py-2 text-gray-500 hover:text-gray-900 sm:inline">Para arenas</a>
+        <a href="{% url 'arena:vitrine' %}" class="rounded-lg px-3 py-2 text-gray-900 hover:bg-gray-100">Abrir o app</a>
       </div>
-      <a href="{% url 'arena:vitrine' %}" class="botao-neon">Abrir o app</a>
     </nav>
   </header>
 
   <main>
-    <section class="mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pt-24">
-      <p class="inline-flex items-center gap-2 rounded-full bg-lime-400/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-lime-300 ring-1 ring-inset ring-lime-400/30">
-        <span class="size-1.5 animate-pulse rounded-full bg-lime-400" aria-hidden="true"></span> {{ total_partidas }} jogo{{ total_partidas|pluralize }} com vaga agora
-      </p>
-      <h1 class="titulo mt-6 max-w-4xl text-5xl leading-[0.92] text-white sm:text-7xl lg:text-8xl">
-        Faltou um?<br><span class="bg-gradient-to-r from-lime-300 via-lime-400 to-cyan-300 bg-clip-text text-transparent">Entra no jogo.</span>
-      </h1>
-      <p class="mt-6 max-w-xl text-lg text-zinc-400">Partidas de futebol perto de você, no seu nível. Escolha, pague pelo app e entre em campo. Sem grupo de WhatsApp, sem cobrar ninguém no balcão.</p>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href="{% url 'arena:vitrine' %}" class="botao-neon px-6 py-3.5 text-base">Achar um jogo {% icone "seta" "size-5" %}</a>
-        <a href="#arenas" class="inline-flex items-center gap-2 rounded-full bg-white/5 px-6 py-3.5 text-base font-bold text-white ring-1 ring-inset ring-white/15 transition hover:bg-white/10">Sou dono de arena</a>
+    <section class="mx-auto max-w-5xl px-4 pb-16 pt-16 sm:px-6 sm:pt-24">
+      <p class="text-lg font-semibold text-gray-500">{{ total_partidas }} jogo{{ total_partidas|pluralize }} com vaga agora</p>
+      <h1 class="titulo mt-3 max-w-3xl text-5xl leading-[1.02] sm:text-7xl">Faltou um? Entra no jogo.</h1>
+      <p class="mt-6 max-w-xl text-xl text-gray-500">Futebol perto de você, no seu nível. Escolha, pague pelo app e entre em campo.</p>
+      <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+        <a href="{% url 'arena:vitrine' %}" class="botao w-full sm:w-auto">Achar um jogo</a>
+        <a href="#arenas" class="botao-secundario w-full sm:w-auto">Tenho uma arena</a>
       </div>
-      <dl class="mt-14 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div class="vidro rounded-2xl p-5"><dt class="text-xs font-bold uppercase tracking-widest text-zinc-500">Jogos abertos</dt><dd class="titulo mt-2 text-4xl text-white">{{ total_partidas }}</dd></div>
-        <div class="vidro rounded-2xl p-5"><dt class="text-xs font-bold uppercase tracking-widest text-zinc-500">Vagas agora</dt><dd class="titulo mt-2 text-4xl text-lime-300">{{ total_vagas }}</dd></div>
-        <div class="vidro rounded-2xl p-5"><dt class="text-xs font-bold uppercase tracking-widest text-zinc-500">Arenas</dt><dd class="titulo mt-2 text-4xl text-white">{{ total_arenas }}</dd></div>
-        <div class="vidro rounded-2xl p-5"><dt class="text-xs font-bold uppercase tracking-widest text-zinc-500">Jogadores</dt><dd class="titulo mt-2 text-4xl text-cyan-300">{{ total_jogadores }}</dd></div>
-      </dl>
     </section>
 
     {% if destaques %}
-      <section class="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
-        <div class="flex items-end justify-between gap-4">
-          <h2 class="titulo text-3xl text-white sm:text-4xl">Rolando nos próximos dias</h2>
-          <a href="{% url 'arena:vitrine' %}" class="hidden text-sm font-bold text-lime-300 hover:text-lime-200 sm:inline">Ver todos os jogos →</a>
-        </div>
-        <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {% for partida in destaques %}{% include "arena/_card_partida.html" %}{% endfor %}
+      <section class="border-t border-gray-200 bg-gray-50">
+        <div class="mx-auto max-w-5xl px-4 py-16 sm:px-6">
+          <h2 class="titulo text-3xl">Rolando nos próximos dias</h2>
+          <div class="mt-6 grid gap-3 md:grid-cols-3">
+            {% for partida in destaques %}{% include "arena/_card_partida.html" %}{% endfor %}
+          </div>
         </div>
       </section>
     {% endif %}
 
-    <section id="como-funciona" class="scroll-mt-20 border-y border-white/5 bg-white/[0.02] py-20">
-      <div class="mx-auto max-w-6xl px-4 sm:px-6">
-        <p class="text-xs font-bold uppercase tracking-widest text-lime-300">Como funciona</p>
-        <h2 class="titulo mt-2 max-w-2xl text-4xl text-white sm:text-5xl">Do sofá ao campo em três toques.</h2>
-        <ol class="mt-10 grid gap-4 md:grid-cols-3">
-          <li class="vidro rounded-3xl p-6">
-            <span class="titulo text-5xl text-lime-400">01</span>
-            <h3 class="mt-4 text-xl font-bold text-white">Escolha o jogo</h3>
-            <p class="mt-2 text-sm text-zinc-400">Filtre por dia, piso, perto de você e pelo seu nível. Veja quem já confirmou antes de entrar.</p>
-          </li>
-          <li class="vidro rounded-3xl p-6">
-            <span class="titulo text-5xl text-lime-400">02</span>
-            <h3 class="mt-4 text-xl font-bold text-white">Pague pelo app</h3>
-            <p class="mt-2 text-sm text-zinc-400">Pix ou cartão, e a vaga é sua. Goleiro joga de graça. Cancelou até 24h antes? O valor volta como crédito.</p>
-          </li>
-          <li class="vidro rounded-3xl p-6">
-            <span class="titulo text-5xl text-lime-400">03</span>
-            <h3 class="mt-4 text-xl font-bold text-white">Entre em campo</h3>
-            <p class="mt-2 text-sm text-zinc-400">Check-in com o QR na recepção, times equilibrados por nível e elogios dos colegas depois do jogo.</p>
-          </li>
-        </ol>
+    <section class="mx-auto max-w-5xl px-4 py-16 sm:px-6">
+      <h2 class="titulo text-3xl sm:text-4xl">Do sofá ao campo em três toques.</h2>
+      <ol class="mt-8 grid gap-8 md:grid-cols-3">
+        <li><p class="text-5xl font-extrabold text-gray-200">1</p><h3 class="mt-2 text-xl font-bold">Escolha o jogo</h3><p class="mt-1 text-gray-500">Por dia, perto de você e no seu nível.</p></li>
+        <li><p class="text-5xl font-extrabold text-gray-200">2</p><h3 class="mt-2 text-xl font-bold">Pague pelo app</h3><p class="mt-1 text-gray-500">Pix ou cartão, e a vaga é sua. Cancelou até 24h antes? Vira crédito.</p></li>
+        <li><p class="text-5xl font-extrabold text-gray-200">3</p><h3 class="mt-2 text-xl font-bold">Entre em campo</h3><p class="mt-1 text-gray-500">Mostre o QR na recepção. Times equilibrados por nível.</p></li>
+      </ol>
+      <ul class="mt-12 grid gap-6 border-t border-gray-200 pt-10 text-gray-500 sm:grid-cols-2">
+        <li><strong class="block text-lg text-gray-900">Ninguém sobra, ninguém se frustra.</strong> Cada jogador tem um nível de 1 a 5, ajustado pela própria comunidade.</li>
+        <li><strong class="block text-lg text-gray-900">Sem 4 contra 4.</strong> Se a partida não atinge o mínimo, ela é cancelada e todo mundo recebe o dinheiro de volta.</li>
+        <li><strong class="block text-lg text-gray-900">Lista de espera.</strong> Abriu vaga, você recebe o aviso. Quem garantir primeiro, joga.</li>
+        <li><strong class="block text-lg text-gray-900">Só o celular. Sem senha.</strong> Um código por SMS e você já pode garantir a vaga.</li>
+      </ul>
+    </section>
+
+    <section id="arenas" class="scroll-mt-4 bg-gray-50">
+      <div class="mx-auto grid max-w-5xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2">
+        <div>
+          <p class="text-lg font-semibold text-gray-500">Para donos de arena</p>
+          <h2 class="titulo mt-2 text-4xl sm:text-5xl">Horário vago vira receita.</h2>
+          <p class="mt-4 text-lg text-gray-500">Um toque abre a quadra para a comunidade, e as vagas são vendidas pelo app. O dinheiro cai na sua conta no dia seguinte ao jogo.</p>
+          <a href="{% url 'gestor:login' %}" class="botao mt-8 w-full sm:w-auto">Abrir o portal da arena</a>
+        </div>
+        <ul class="grid gap-3 self-center sm:grid-cols-2">
+          <li class="cartao p-5"><p class="font-bold">Pagamento antecipado</p><p class="mt-1 text-gray-500">Nada de cobrar no balcão nem de calote.</p></li>
+          <li class="cartao p-5"><p class="font-bold">Aluguel cheio</p><p class="mt-1 text-gray-500">Lotou, a quadra recebe o valor total.</p></li>
+          <li class="cartao p-5"><p class="font-bold">Repasse automático</p><p class="mt-1 text-gray-500">No dia seguinte ao jogo.</p></li>
+          <li class="cartao p-5"><p class="font-bold">Sem mensalidade</p><p class="mt-1 text-gray-500">A taxa é paga pelo jogador.</p></li>
+        </ul>
       </div>
     </section>
 
-    <section class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-      <div class="grid gap-4 md:grid-cols-3">
-        <div class="vidro rounded-3xl p-8 md:col-span-2">
-          <p class="text-xs font-bold uppercase tracking-widest text-cyan-300">Jogo no seu nível</p>
-          <h3 class="titulo mt-2 text-3xl text-white">Ninguém sobra, ninguém se frustra.</h3>
-          <p class="mt-3 max-w-lg text-zinc-400">Cada jogador tem um nível de 1 a 5, calibrado pela própria comunidade depois dos jogos. Partidas de iniciante protegem quem está começando; as avançadas, quem quer pegar pesado.</p>
-          <div class="mt-6 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wide">
-            <span class="rounded-full px-3 py-1 ring-1 ring-inset {{ "iniciante"|nivel_escuro }}">Iniciante · 1–2</span>
-            <span class="rounded-full px-3 py-1 ring-1 ring-inset {{ "intermediario"|nivel_escuro }}">Intermediário · 2–4</span>
-            <span class="rounded-full px-3 py-1 ring-1 ring-inset {{ "avancado"|nivel_escuro }}">Avançado · 4–5</span>
-            <span class="rounded-full px-3 py-1 ring-1 ring-inset {{ "aberta"|nivel_escuro }}">Aberta a todos</span>
-          </div>
-        </div>
-        <div class="vidro rounded-3xl p-8">
-          <p class="text-xs font-bold uppercase tracking-widest text-amber-300">Jogo garantido</p>
-          <h3 class="titulo mt-2 text-3xl text-white">Sem 4 contra 4.</h3>
-          <p class="mt-3 text-zinc-400">Se a partida não atinge o mínimo de jogadores no prazo, ela é cancelada e todo mundo recebe o dinheiro de volta.</p>
-        </div>
-        <div class="vidro rounded-3xl p-8">
-          <p class="text-xs font-bold uppercase tracking-widest text-lime-300">Lotou?</p>
-          <h3 class="titulo mt-2 text-3xl text-white">Lista de espera.</h3>
-          <p class="mt-3 text-zinc-400">Abriu vaga, você recebe o aviso na hora. Quem garantir primeiro, joga.</p>
-        </div>
-        <div class="vidro rounded-3xl p-8 md:col-span-2">
-          <p class="text-xs font-bold uppercase tracking-widest text-cyan-300">Entrar é rápido</p>
-          <h3 class="titulo mt-2 text-3xl text-white">Só o celular. Sem senha.</h3>
-          <p class="mt-3 max-w-lg text-zinc-400">Você recebe um código por SMS, responde três perguntas sobre como joga e já pode garantir a vaga.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="arenas" class="scroll-mt-20 py-20">
-      <div class="mx-auto max-w-6xl px-4 sm:px-6">
-        <div class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-zinc-900 to-zinc-950 p-8 ring-1 ring-white/10 sm:p-12">
-          <div aria-hidden="true" class="absolute -right-24 -top-24 size-96 rounded-full bg-lime-400/20 blur-3xl"></div>
-          <div class="relative grid gap-10 lg:grid-cols-2">
-            <div>
-              <p class="text-xs font-bold uppercase tracking-widest text-lime-300">Para donos de arena</p>
-              <h2 class="titulo mt-2 text-4xl text-white sm:text-5xl">Horário vago vira receita.</h2>
-              <p class="mt-4 text-zinc-400">O ArenaManager organiza agenda, mensalistas e financeiro. Com um clique, um horário ocioso vira partida aberta e é vendido vaga a vaga para a comunidade.</p>
-              <a href="{% url 'gestor:login' %}" class="botao-neon mt-8 px-6 py-3.5 text-base">Acessar o ArenaManager {% icone "seta" "size-5" %}</a>
-            </div>
-            <ul class="grid gap-3 sm:grid-cols-2">
-              <li class="rounded-2xl bg-white/5 p-5 ring-1 ring-inset ring-white/10"><p class="font-bold text-white">Pagamento antecipado</p><p class="mt-1 text-sm text-zinc-400">O jogador paga no app. Nada de cobrar no balcão nem de calote.</p></li>
-              <li class="rounded-2xl bg-white/5 p-5 ring-1 ring-inset ring-white/10"><p class="font-bold text-white">Aluguel cheio</p><p class="mt-1 text-sm text-zinc-400">Lotou as vagas de linha, a quadra recebe o valor total do aluguel.</p></li>
-              <li class="rounded-2xl bg-white/5 p-5 ring-1 ring-inset ring-white/10"><p class="font-bold text-white">Repasse no dia seguinte</p><p class="mt-1 text-sm text-zinc-400">O saldo do jogo é liberado no dia seguinte e transferido automaticamente.</p></li>
-              <li class="rounded-2xl bg-white/5 p-5 ring-1 ring-inset ring-white/10"><p class="font-bold text-white">Sem mensalidade</p><p class="mt-1 text-sm text-zinc-400">A taxa de serviço é paga pelo jogador. A arena não paga para usar.</p></li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="mx-auto max-w-6xl px-4 pb-24 text-center sm:px-6">
-      <h2 class="titulo text-4xl text-white sm:text-6xl">Bora jogar?</h2>
-      <a href="{% url 'arena:vitrine' %}" class="botao-neon mt-8 px-8 py-4 text-lg">Ver jogos perto de mim {% icone "seta" "size-5" %}</a>
+    <section class="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6">
+      <h2 class="titulo text-4xl sm:text-5xl">Bora jogar?</h2>
+      <a href="{% url 'arena:vitrine' %}" class="botao mt-8 w-full sm:w-auto">Ver jogos perto de mim</a>
     </section>
   </main>
 
-  <footer class="border-t border-white/5">
-    <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-zinc-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-      <p>© {% now "Y" %} ArenaMatch · Futebol amador, sem complicação.</p>
-      <nav class="flex gap-6 font-medium">
-        <a href="{% url 'arena:vitrine' %}" class="transition hover:text-white">App</a>
-        <a href="{% url 'gestor:login' %}" class="transition hover:text-white">ArenaManager</a>
-        <a href="{% url 'api:raiz' %}" class="transition hover:text-white">API</a>
+  <footer class="border-t border-gray-200">
+    <div class="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-6 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p>© {% now "Y" %} ArenaMatch</p>
+      <nav class="flex gap-6">
+        <a href="{% url 'arena:vitrine' %}" class="hover:text-gray-900">App</a>
+        <a href="{% url 'gestor:login' %}" class="hover:text-gray-900">Portal da arena</a>
+        <a href="{% url 'api:raiz' %}" class="hover:text-gray-900">API</a>
       </nav>
     </div>
   </footer>

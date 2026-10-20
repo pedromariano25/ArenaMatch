@@ -1,35 +1,27 @@
 {% extends "arena/base.html" %}
-{% load arena_extras %}
 
 {% block title %}Criar conta{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-lg px-4 py-12 sm:py-16">
-  <div class="text-center">
-    <h1 class="titulo text-4xl text-white">Crie sua conta de jogador</h1>
-    <p class="mt-2 text-sm text-zinc-400">O jeito mais rápido é <a href="{% url 'arena:entrar_telefone' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-lime-300 hover:text-lime-200">entrar com o celular</a>, sem senha.</p>
-  </div>
+<div class="mx-auto max-w-sm px-4 py-10 sm:py-16">
+  <h1 class="titulo text-3xl">Crie sua conta de jogador</h1>
+  <p class="mt-2 text-lg text-gray-500">Mais rápido: <a href="{% url 'arena:entrar_telefone' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-gray-900 underline underline-offset-4">entrar com o celular</a>, sem senha.</p>
 
-  <form method="post" class="vidro mt-8 space-y-5 rounded-3xl p-6 sm:p-8">
+  <form method="post" class="mt-6 space-y-5">
     {% csrf_token %}
     {% if form.non_field_errors %}
-      <p class="rounded-2xl bg-rose-400/10 p-3 text-sm text-rose-200 ring-1 ring-inset ring-rose-400/30">{{ form.non_field_errors|join:" " }}</p>
+      <p class="rounded-2xl bg-red-50 p-4 text-base text-red-800">{{ form.non_field_errors|join:" " }}</p>
     {% endif %}
-    <div class="grid gap-5 sm:grid-cols-2">
-      {% include "arena/_campo.html" with campo=form.first_name %}
-      {% include "arena/_campo.html" with campo=form.last_name %}
-    </div>
+    {% include "arena/_campo.html" with campo=form.first_name %}
+    {% include "arena/_campo.html" with campo=form.last_name %}
     {% include "arena/_campo.html" with campo=form.username %}
     {% include "arena/_campo.html" with campo=form.email %}
     {% include "arena/_campo.html" with campo=form.telefone %}
     {% include "arena/_campo.html" with campo=form.password1 %}
     {% include "arena/_campo.html" with campo=form.password2 %}
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit" class="botao-neon w-full py-3.5 text-base">Criar conta e começar a jogar</button>
-    <p class="text-center text-sm text-zinc-500">
-      Já tem conta?
-      <a href="{% url 'arena:entrar_telefone' %}" class="font-semibold text-zinc-300 hover:text-white">Entrar</a>
-    </p>
+    <button type="submit" class="botao w-full">Criar conta</button>
   </form>
+  <p class="mt-6 text-center text-base text-gray-500">Já tem conta? <a href="{% url 'arena:entrar_telefone' %}" class="font-semibold text-gray-900 underline underline-offset-4">Entrar</a></p>
 </div>
 {% endblock %}

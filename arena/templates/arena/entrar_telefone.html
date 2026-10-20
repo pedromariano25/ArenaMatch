@@ -1,28 +1,24 @@
 {% extends "arena/base.html" %}
-{% load arena_extras %}
 
 {% block title %}Entrar{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-sm px-4 py-12 sm:py-16">
-  <div class="text-center">
-    <span class="mx-auto grid size-14 place-items-center rounded-2xl bg-lime-400 text-zinc-950 neon">{% icone "bola" "size-8" %}</span>
-    <h1 class="titulo mt-6 text-4xl text-white">Entre com seu celular</h1>
-    <p class="mt-2 text-sm text-zinc-400">Sem senha: mandamos um código por SMS. Se for a primeira vez, sua conta é criada na hora.</p>
-  </div>
+<div class="mx-auto max-w-sm px-4 py-10 sm:py-16">
+  <h1 class="titulo text-3xl">Entre com seu celular</h1>
+  <p class="mt-2 text-lg text-gray-500">Sem senha: mandamos um código por SMS. Na primeira vez, a conta é criada na hora.</p>
 
-  <form method="post" class="vidro mt-8 space-y-5 rounded-3xl p-6">
+  <form method="post" class="mt-6 space-y-5">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ next }}">
     {% include "arena/_campo.html" with campo=form.telefone %}
-    <button type="submit" class="botao-neon w-full py-3.5 text-base">Receber código</button>
+    <button type="submit" class="botao w-full">Receber código</button>
   </form>
 
-  <p class="mt-6 text-center text-sm text-zinc-500">
-    Prefere usuário e senha? <a href="{% url 'arena:entrar' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-zinc-300 hover:text-white">Entrar com senha</a>
+  <p class="mt-6 text-center text-base text-gray-500">
+    Prefere senha? <a href="{% url 'arena:entrar' %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="font-semibold text-gray-900 underline underline-offset-4">Entrar com senha</a>
   </p>
-  <p class="mt-2 text-center text-sm text-zinc-500">
-    É dono de arena? <a href="{% url 'gestor:login' %}" class="font-semibold text-zinc-300 hover:text-white">Acesse o ArenaManager</a>
+  <p class="mt-2 text-center text-base text-gray-500">
+    Tem uma arena? <a href="{% url 'gestor:login' %}" class="font-semibold text-gray-900 underline underline-offset-4">Portal da arena</a>
   </p>
 </div>
 {% endblock %}

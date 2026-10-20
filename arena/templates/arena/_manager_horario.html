@@ -1,5 +1,5 @@
 {% load arena_extras %}{% comment %}
-Um horário na agenda do painel. Livre: um toque publica a partida padrão da quadra.
+Um horário em "Abrir quadra". Livre: um toque publica a partida padrão da quadra.
 Espera no contexto: celula, quadra, padrao e dia.
 {% endcomment %}
 {% if celula.tipo == "vago" %}
@@ -11,29 +11,26 @@ Espera no contexto: celula, quadra, padrao e dia.
     <input type="hidden" name="hora_fim" value="{{ celula.fim|time:'H:i' }}">
     <input type="hidden" name="valor_total_aluguel" value="{{ padrao.valor_total_aluguel|stringformat:'s' }}">
     <input type="hidden" name="nivel_competitividade" value="{{ padrao.nivel_competitividade }}">
-    <input type="hidden" name="voltar" value="{% url 'gestor:dashboard' %}?dia={{ dia|date:'Y-m-d' }}#agenda">
-    <button type="submit" aria-label="Publicar partida às {{ celula.inicio|time:'H:i' }} na {{ quadra.nome_ou_numero }}" class="flex h-full min-h-24 w-full flex-col justify-between gap-3 rounded-2xl border border-dashed border-lime-400/40 bg-lime-400/[0.03] p-3 text-left transition hover:border-lime-400 hover:bg-lime-400/10 active:scale-[0.98]">
-      <span class="titulo text-xl leading-none text-white tabular-nums">{{ celula.inicio|time:"H:i" }}</span>
-      <span class="flex items-center gap-1 text-xs font-black text-lime-300">{% icone "mais" "size-3.5" %} Publicar</span>
+    <input type="hidden" name="voltar" value="{% url 'gestor:abrir_quadra' %}?dia={{ dia|date:'Y-m-d' }}">
+    <button type="submit" aria-label="Publicar partida às {{ celula.inicio|time:'H:i' }} na {{ quadra.nome_ou_numero }}" class="flex h-full min-h-24 w-full flex-col justify-between gap-3 rounded-2xl border-2 border-dashed border-gray-300 bg-white p-3 text-left transition hover:border-bandeira-600 hover:bg-bandeira-50 active:scale-[0.98]">
+      <span class="titulo text-xl leading-none tabular-nums">{{ celula.inicio|time:"H:i" }}</span>
+      <span class="flex items-center gap-1 text-sm font-bold text-bandeira-700">{% icone "mais" "size-4" %} Publicar</span>
     </button>
   </form>
 {% elif celula.partida and celula.tipo != "pelada" %}
   {% with partida=celula.partida %}
-  <div class="flex h-full min-h-24 flex-col justify-between gap-3 rounded-2xl p-3 ring-1 ring-inset {% if celula.tipo == 'lotada' %}bg-lime-400 text-zinc-950 ring-lime-400{% else %}bg-lime-400/10 ring-lime-400/30{% endif %}">
-    <span class="titulo text-xl leading-none tabular-nums {% if celula.tipo != 'lotada' %}text-white{% endif %}">{{ celula.inicio|time:"H:i" }}</span>
+  <div class="flex h-full min-h-24 flex-col justify-between gap-3 rounded-2xl p-3 {% if celula.tipo == 'lotada' %}bg-bandeira-600 text-white{% else %}border border-bandeira-600 bg-bandeira-50{% endif %}">
+    <span class="titulo text-xl leading-none tabular-nums">{{ celula.inicio|time:"H:i" }}</span>
     <div>
       {% if celula.tipo == "lotada" %}
-        <p class="text-xs font-black">Lotou</p>
+        <p class="text-sm font-bold">Lotou</p>
       {% else %}
-        <p class="text-xs font-bold text-lime-300">À venda <span class="text-zinc-300 tabular-nums">{{ partida.jogadores_confirmados }}/{{ partida.vagas_totais }}</span></p>
-        <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10" role="img" aria-label="{{ partida.percentual_ocupado }}% das vagas vendidas">
-          <div class="h-full rounded-full bg-lime-400" style="width: {{ partida.percentual_ocupado }}%"></div>
-        </div>
+        <p class="text-sm font-bold text-bandeira-700">À venda <span class="font-semibold text-gray-600 tabular-nums">{{ partida.jogadores_confirmados }}/{{ partida.vagas_totais }}</span></p>
         {% if not partida.vagas_ocupadas %}
-          <form method="post" action="{% url 'gestor:cancelar_partida' partida.pk %}" class="mt-2">
+          <form method="post" action="{% url 'gestor:cancelar_partida' partida.pk %}" class="mt-1">
             {% csrf_token %}
-            <input type="hidden" name="voltar" value="{% url 'gestor:dashboard' %}?dia={{ dia|date:'Y-m-d' }}#agenda">
-            <button type="submit" class="text-[11px] font-bold text-zinc-400 underline underline-offset-2 transition hover:text-white">Desfazer</button>
+            <input type="hidden" name="voltar" value="{% url 'gestor:abrir_quadra' %}?dia={{ dia|date:'Y-m-d' }}">
+            <button type="submit" class="text-xs font-semibold text-gray-500 underline underline-offset-2 hover:text-gray-900">Desfazer</button>
           </form>
         {% endif %}
       {% endif %}
@@ -41,9 +38,9 @@ Espera no contexto: celula, quadra, padrao e dia.
   </div>
   {% endwith %}
 {% else %}
-  <div class="flex h-full min-h-24 flex-col justify-between gap-3 rounded-2xl bg-white/[0.03] p-3 ring-1 ring-white/5 ring-inset">
-    <span class="titulo text-xl leading-none text-zinc-500 tabular-nums">{{ celula.inicio|time:"H:i" }}</span>
-    <span class="selo w-fit {{ celula.tipo|classes_selo }}">{{ celula.rotulo }}</span>
-    {% if celula.tipo == "pelada" %}<span class="-mt-2 truncate text-[11px] text-zinc-500">{{ celula.partida.organizador.nome_publico }} vende {{ celula.partida.vagas_totais }} vaga{{ celula.partida.vagas_totais|pluralize }}</span>{% endif %}
+  <div class="flex h-full min-h-24 flex-col justify-between gap-3 rounded-2xl bg-gray-100 p-3">
+    <span class="titulo text-xl leading-none text-gray-400 tabular-nums">{{ celula.inicio|time:"H:i" }}</span>
+    <span class="text-sm font-semibold text-gray-600">{{ celula.rotulo }}</span>
+    {% if celula.tipo == "pelada" %}<span class="-mt-2 truncate text-xs text-gray-500">{{ celula.partida.organizador.nome_publico }} vende {{ celula.partida.vagas_totais }} vaga{{ celula.partida.vagas_totais|pluralize }}</span>{% endif %}
   </div>
 {% endif %}

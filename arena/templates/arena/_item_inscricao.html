@@ -1,22 +1,18 @@
 {% load arena_extras %}
 {% with partida=inscricao.open_match horario=inscricao.open_match.time_slot %}
-<a href="{% url 'arena:inscricao' inscricao.pk %}" class="group vidro flex items-center gap-4 rounded-2xl p-4 transition hover:border-lime-400/40 hover:bg-white/[0.06]">
-  <div class="flex w-14 shrink-0 flex-col items-center rounded-xl bg-white/5 py-1.5 ring-1 ring-inset ring-white/10">
-    <span class="text-[11px] font-bold uppercase text-lime-300">{{ horario.data|date:"M" }}</span>
-    <span class="titulo text-2xl leading-none text-white">{{ horario.data|date:"d" }}</span>
+<a href="{% url 'arena:inscricao' inscricao.pk %}" class="cartao flex items-center gap-4 p-4 transition hover:border-gray-400">
+  <div class="w-14 shrink-0 text-center">
+    <p class="text-xs font-semibold uppercase text-gray-500">{{ horario.data|date:"M" }}</p>
+    <p class="titulo text-2xl leading-none">{{ horario.data|date:"d" }}</p>
   </div>
-  {# No celular os selos descem para baixo do nome, que assim não fica espremido. #}
-  <div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-    <div class="min-w-0 sm:flex-1">
-      <p class="truncate font-bold text-white">{{ horario.court.arena.nome }}</p>
-      <p class="mt-0.5 truncate text-sm text-zinc-400">{{ horario.data|rotulo_dia }} · {{ horario.intervalo }} · {{ horario.court.nome_ou_numero }}</p>
-    </div>
-    <div class="flex shrink-0 items-center gap-2">
-      <p class="hidden text-sm font-semibold text-zinc-200 sm:block">{% if inscricao.gratuita %}Goleiro{% else %}{{ inscricao.valor_total|brl }}{% endif %}</p>
-      <span class="rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset {{ inscricao.status|inscricao_escuro }}">{% if inscricao.em_repasse %}Em repasse{% elif inscricao.faltou %}Faltou{% else %}{{ inscricao.get_status_display }}{% endif %}</span>
-      {% if inscricao.pode_avaliar %}<span class="rounded-full bg-cyan-400 px-2.5 py-1 text-xs font-black text-zinc-950">Avaliar</span>{% endif %}
-    </div>
+  <div class="min-w-0 flex-1">
+    <p class="truncate text-base font-semibold">{{ partida.nome_exibido }}</p>
+    <p class="truncate text-sm text-gray-500">{{ horario.data|rotulo_dia }} · {{ horario.intervalo }} · {{ horario.court.nome_ou_numero }}</p>
+    <p class="mt-1.5 flex flex-wrap items-center gap-2">
+      <span class="selo {{ inscricao.status|classes_status }}">{% if inscricao.em_repasse %}Em repasse{% elif inscricao.faltou %}Faltou{% else %}{{ inscricao.get_status_display }}{% endif %}</span>
+      {% if inscricao.pode_avaliar %}<span class="selo bg-gray-900 text-white">Avaliar</span>{% endif %}
+    </p>
   </div>
-  {% icone "seta" "size-4 shrink-0 text-zinc-600 transition group-hover:text-lime-300" %}
+  <p class="shrink-0 text-right text-base font-semibold tabular-nums">{% if inscricao.gratuita %}Goleiro{% else %}{{ inscricao.valor_total|brl }}{% endif %}</p>
 </a>
 {% endwith %}

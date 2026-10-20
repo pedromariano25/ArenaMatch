@@ -1,107 +1,93 @@
 {% extends "arena/base.html" %}
 {% load arena_extras %}
 
-{% block title %}Partidas perto de você{% endblock %}
+{% block title %}Jogos perto de você{% endblock %}
 
 {% block content %}
-<section class="mx-auto max-w-6xl px-4 pt-8 sm:px-6 sm:pt-12">
-  <p class="inline-flex items-center gap-2 rounded-full bg-lime-400/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-lime-300 ring-1 ring-inset ring-lime-400/30">
-    <span class="size-1.5 animate-pulse rounded-full bg-lime-400" aria-hidden="true"></span> Ao vivo
-  </p>
-  <h1 class="titulo mt-4 text-4xl leading-[0.95] text-white sm:text-6xl">
-    {% if perfil %}Bora jogar, {{ perfil.nome_exibicao }}?{% else %}Bora jogar hoje?{% endif %}
-  </h1>
-  <p class="mt-3 max-w-xl text-zinc-400">Jogos de arenas parceiras e peladas de grupo precisando completar o time. Escolha, pague pelo app e entre em campo.</p>
-</section>
+<div class="mx-auto max-w-3xl px-4 pt-6 sm:px-6 sm:pt-10">
+  <h1 class="titulo text-3xl sm:text-4xl">{% if perfil %}Bora jogar, {{ perfil.nome_exibicao }}?{% else %}Jogos perto de você{% endif %}</h1>
 
-<section id="partidas" class="sticky top-16 z-30 mt-6 border-y border-white/5 bg-zinc-950/80 backdrop-blur-xl">
-  <div class="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-3 text-sm font-semibold sm:px-6 [scrollbar-width:none]">
-    <a href="{% url_com dia='' %}" class="shrink-0 rounded-full px-4 py-2 transition {% if not filtro.dia.value %}bg-lime-400 text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">Todos os dias</a>
+  {# Filtros: o dia e "perto de mim" à vista; o resto, recolhido. #}
+  <div class="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0">
+    <a href="{% url_com dia='' %}" class="chip {% if not filtro.dia.value %}chip-ativo{% endif %}">Todos</a>
     {% for valor, rotulo in filtro.fields.dia.choices %}{% if valor %}
-      <a href="{% url_com dia=valor %}" class="shrink-0 rounded-full px-4 py-2 transition {% if filtro.dia.value == valor %}bg-lime-400 text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
+      <a href="{% url_com dia=valor %}" class="chip {% if filtro.dia.value == valor %}chip-ativo{% endif %}">{{ rotulo }}</a>
     {% endif %}{% endfor %}
-    <span class="mx-1 w-px shrink-0 bg-white/10" aria-hidden="true"></span>
-    {% if perfil %}
-      <a href="{% if meu_nivel %}{% url_com meu_nivel='' %}{% else %}{% url_com meu_nivel='1' %}{% endif %}" class="shrink-0 rounded-full px-4 py-2 transition {% if meu_nivel %}bg-cyan-400 text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">Meu nível ({{ perfil.nivel }})</a>
-    {% endif %}
     {% if perto %}
-      <a href="{% url_com lat='' lng='' %}" class="shrink-0 rounded-full bg-cyan-400 px-4 py-2 text-zinc-950 transition">Perto de mim ✕</a>
+      <a href="{% url_com lat='' lng='' %}" class="chip chip-ativo">{% icone "pin" "size-4" %} Perto de mim ✕</a>
     {% else %}
-      <button type="button" data-perto class="shrink-0 rounded-full bg-white/5 px-4 py-2 text-zinc-300 transition hover:bg-white/10">Perto de mim</button>
-    {% endif %}
-    <span class="mx-1 w-px shrink-0 bg-white/10" aria-hidden="true"></span>
-    {% for valor, rotulo in filtro.fields.origem.choices %}{% if valor %}
-      <a href="{% if filtro.origem.value == valor %}{% url_com origem='' %}{% else %}{% url_com origem=valor %}{% endif %}" class="shrink-0 rounded-full px-4 py-2 transition {% if filtro.origem.value == valor %}{% if valor == 'pelada' %}bg-fuchsia-400{% else %}bg-lime-400{% endif %} text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
-    {% endif %}{% endfor %}
-    <span class="mx-1 w-px shrink-0 bg-white/10" aria-hidden="true"></span>
-    {% for valor, rotulo in filtro.fields.piso.choices %}{% if valor %}
-      <a href="{% if filtro.piso.value == valor %}{% url_com piso='' %}{% else %}{% url_com piso=valor %}{% endif %}" class="shrink-0 rounded-full px-4 py-2 transition {% if filtro.piso.value == valor %}bg-white text-zinc-950{% else %}bg-white/5 text-zinc-300 hover:bg-white/10{% endif %}">{{ rotulo }}</a>
-    {% endif %}{% endfor %}
-    {% if filtros_ativos %}
-      <a href="{% url 'arena:vitrine' %}" class="shrink-0 rounded-full px-4 py-2 text-zinc-500 transition hover:text-white">Limpar</a>
+      <button type="button" data-perto class="chip">{% icone "pin" "size-4" %} Perto de mim</button>
     {% endif %}
   </div>
-</section>
 
-<section class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+  <details class="mt-3 text-sm" {% if meu_nivel or filtro.origem.value or filtro.piso.value %}open{% endif %}>
+    <summary class="inline-flex cursor-pointer list-none items-center gap-1 font-semibold text-gray-500 hover:text-gray-900">{% icone "filtro" "size-4" %} Mais filtros</summary>
+    <div class="mt-3 flex flex-wrap gap-2">
+      {% if perfil %}
+        <a href="{% if meu_nivel %}{% url_com meu_nivel='' %}{% else %}{% url_com meu_nivel='1' %}{% endif %}" class="chip {% if meu_nivel %}chip-ativo{% endif %}">Meu nível ({{ perfil.nivel }})</a>
+      {% endif %}
+      {% for valor, rotulo in filtro.fields.origem.choices %}{% if valor %}
+        <a href="{% if filtro.origem.value == valor %}{% url_com origem='' %}{% else %}{% url_com origem=valor %}{% endif %}" class="chip {% if filtro.origem.value == valor %}chip-ativo{% endif %}">{{ rotulo }}</a>
+      {% endif %}{% endfor %}
+      {% for valor, rotulo in filtro.fields.piso.choices %}{% if valor %}
+        <a href="{% if filtro.piso.value == valor %}{% url_com piso='' %}{% else %}{% url_com piso=valor %}{% endif %}" class="chip {% if filtro.piso.value == valor %}chip-ativo{% endif %}">{{ rotulo }}</a>
+      {% endif %}{% endfor %}
+      {% if filtros_ativos %}<a href="{% url 'arena:vitrine' %}" class="chip text-gray-500">Limpar</a>{% endif %}
+    </div>
+  </details>
+</div>
+
+<section class="mx-auto max-w-3xl px-4 py-6 sm:px-6">
   {% if perto %}
-    <p class="mb-4 text-sm text-zinc-400">Mais perto de você primeiro.</p>
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <p class="mb-3 text-sm text-gray-500">Mais perto de você primeiro.</p>
+    <div class="space-y-3">
       {% for partida in partidas %}{% include "arena/_card_partida.html" %}{% endfor %}
     </div>
   {% else %}
     {% regroup partidas by time_slot.data as dias %}
     {% for dia in dias %}
-      <div class="mt-8 first:mt-0">
-        <div class="mb-4 flex items-end justify-between gap-4">
-          <h2 class="titulo text-2xl text-white">{{ dia.grouper|rotulo_dia }} <span class="font-sans text-base font-semibold text-zinc-500">{{ dia.grouper|date:"d/m" }}</span></h2>
-          <span class="text-sm text-zinc-500">{{ dia.list|length }} jogo{{ dia.list|length|pluralize }}</span>
-        </div>
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {% for partida in dia.list %}{% include "arena/_card_partida.html" %}{% endfor %}
-        </div>
+      <h2 class="mb-3 mt-8 text-lg font-bold first:mt-0">{{ dia.grouper|rotulo_dia }} <span class="font-normal text-gray-500">{{ dia.grouper|date:"d/m" }}</span></h2>
+      <div class="space-y-3">
+        {% for partida in dia.list %}{% include "arena/_card_partida.html" %}{% endfor %}
       </div>
     {% endfor %}
   {% endif %}
   {% if not partidas %}
-    <div class="vidro mt-4 rounded-3xl px-6 py-16 text-center">
-      <p class="titulo text-2xl text-white">Nenhuma partida encontrada</p>
-      <p class="mx-auto mt-2 max-w-sm text-sm text-zinc-400">Tente outro dia, piso ou nível. As arenas abrem novas partidas o tempo todo.</p>
-      <a href="{% url 'arena:vitrine' %}" class="botao-neon mt-6">Limpar filtros</a>
+    <div class="cartao px-6 py-14 text-center">
+      <p class="text-xl font-bold">Nenhuma partida encontrada</p>
+      <p class="mx-auto mt-2 max-w-sm text-gray-500">Tente outro dia ou tire os filtros. As arenas abrem partidas o tempo todo.</p>
+      <a href="{% url 'arena:vitrine' %}" class="botao-secundario mt-6">Ver todos os jogos</a>
     </div>
   {% endif %}
 </section>
 
 {% if user.is_authenticated %}
-<dialog id="checkout-rapido" class="m-0 mt-auto w-full max-w-none rounded-t-3xl border border-white/10 bg-zinc-900 p-0 text-zinc-100 backdrop:bg-black/70 backdrop:backdrop-blur-sm sm:m-auto sm:max-w-md sm:rounded-3xl">
+<dialog id="checkout-rapido" class="m-0 mt-auto w-full max-w-none rounded-t-3xl bg-white p-0 text-gray-900 backdrop:bg-gray-900/40 sm:m-auto sm:max-w-md sm:rounded-3xl">
   <form method="post" class="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
     {% csrf_token %}
-    <div class="mx-auto mb-5 h-1 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden="true"></div>
-    <p class="text-xs font-bold uppercase tracking-widest text-lime-300">Garantir vaga</p>
-    <h2 class="titulo mt-1 text-2xl text-white" data-titulo></h2>
+    <div class="mx-auto mb-5 h-1 w-10 rounded-full bg-gray-300 sm:hidden" aria-hidden="true"></div>
+    <h2 class="text-xl font-bold" data-titulo></h2>
 
     <fieldset class="mt-5">
-      <legend class="text-sm font-semibold text-zinc-300">Vaga</legend>
+      <legend class="text-sm font-semibold text-gray-500">Vaga</legend>
       <div class="mt-2 grid grid-cols-2 gap-2">
-        <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10"><input type="radio" name="posicao" value="linha" checked class="accent-lime-400"> Linha</label>
-        <label class="flex cursor-pointer items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold has-[:checked]:border-cyan-400 has-[:checked]:bg-cyan-400/10" data-opcao-goleiro><input type="radio" name="posicao" value="goleiro" class="accent-cyan-400"> Goleiro · <span data-goleiro-rotulo>grátis</span></label>
+        <label class="opcao"><input type="radio" name="posicao" value="linha" checked class="size-5 accent-gray-900"> Linha</label>
+        <label class="opcao" data-opcao-goleiro><input type="radio" name="posicao" value="goleiro" class="size-5 accent-gray-900"> Goleiro · <span data-goleiro-rotulo>grátis</span></label>
       </div>
     </fieldset>
 
     <fieldset class="mt-5" data-metodos>
-      <legend class="text-sm font-semibold text-zinc-300">Pagamento</legend>
+      <legend class="text-sm font-semibold text-gray-500">Pagamento</legend>
       <div class="mt-2 space-y-2">
-        <label class="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3.5 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10"><span class="flex items-center gap-2"><input type="radio" name="metodo" value="pix" checked class="accent-lime-400"> Pix</span><span data-pix></span></label>
-        <label class="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3.5 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10"><span class="flex items-center gap-2"><input type="radio" name="metodo" value="cartao" class="accent-lime-400"> Cartão</span><span data-cartao></span></label>
-        <label class="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3.5 text-sm font-semibold has-[:checked]:border-lime-400 has-[:checked]:bg-lime-400/10" data-opcao-credito data-saldo="{{ saldo|stringformat:'s' }}"><span class="flex items-center gap-2"><input type="radio" name="metodo" value="credito" class="accent-lime-400"> Crédito ArenaMatch</span><span class="text-zinc-400">saldo {{ saldo|brl }}</span></label>
+        <label class="opcao justify-between"><span class="flex items-center gap-3"><input type="radio" name="metodo" value="pix" checked class="size-5 accent-gray-900"> Pix</span><span data-pix></span></label>
+        <label class="opcao justify-between"><span class="flex items-center gap-3"><input type="radio" name="metodo" value="cartao" class="size-5 accent-gray-900"> Cartão</span><span data-cartao></span></label>
+        <label class="opcao justify-between" data-opcao-credito data-saldo="{{ saldo|stringformat:'s' }}"><span class="flex items-center gap-3"><input type="radio" name="metodo" value="credito" class="size-5 accent-gray-900"> Crédito</span><span class="text-gray-500">saldo {{ saldo|brl }}</span></label>
       </div>
-      <p class="mt-2 text-xs text-zinc-500">Vaga segura por 10 min enquanto você paga. Cancelou até 24h antes? Vira crédito.</p>
+      <p class="mt-3 text-sm text-gray-500">A vaga fica segura por 10 minutos enquanto você paga.</p>
     </fieldset>
 
-    <div class="mt-6 flex gap-3">
-      <button type="button" data-fechar class="rounded-full bg-white/5 px-5 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10">Voltar</button>
-      <button type="submit" class="botao-neon flex-1 py-3">Confirmar</button>
-    </div>
+    <button type="submit" class="botao mt-6 w-full">Confirmar</button>
+    <button type="button" data-fechar class="mt-2 w-full py-3 text-base font-semibold text-gray-500">Voltar</button>
   </form>
 </dialog>
 {% endif %}

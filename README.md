@@ -91,26 +91,41 @@ para fechar os times. Fica em `/app/organizar/` (botão **Organizar**).
 | Dinheiro | A parte da vaga vai para o saldo do organizador (carteira `ORGANIZADOR` no razão, não para a arena), liberada no dia seguinte ao jogo. Saque via Pix de todo o disponível, mínimo de R$ 10 (`Wallet` guarda a chave Pix; `Saque` registra cada transferência) |
 | Cancelamento | O organizador (ou a arena, na sua quadra) cancela e todos recebem o dinheiro de volta. Para o jogador, valem as regras de sempre (crédito até 24h antes) |
 
-No feed, partidas de arena trazem o selo **Arena parceira**; peladas de grupo têm
-destaque magenta, o nome da pelada e o organizador. O filtro "Peladas de grupo"
-mostra só elas.
+No feed, cada cartão diz de onde vem: **Arena parceira** ou **Pelada de grupo ·
+por Fulano**, com o nome da pelada. O filtro "Peladas de grupo" mostra só elas.
+A tela "Completar a pelada" tem um passo só: quadra, dia, horário, vagas e quanto
+o organizador recebe; nome, término, nível e goleiro ficam em "Mais opções".
 
 ## Portal da arena
 
-O Portal do Gestor (`/manager/`) segue o mesmo visual escuro do app, com menu
+O Portal do Gestor (`/manager/`) segue o mesmo visual claro do app, com menu
 lateral no computador e barra inferior no celular.
 
 | Tela | O que faz |
 | --- | --- |
-| Início | Três números (saldo a receber, vagas vendidas no mês e horários ociosos nos próximos 7 dias) e a agenda do dia por quadra. **Um toque num horário livre publica a partida** com os valores sugeridos (último aluguel da quadra, capacidade, goleiros e nível aberto); o preço por jogador aparece antes. Enquanto ninguém comprou, o horário mostra "Desfazer" |
+| Início | Só o dinheiro: **saldo a receber** e **vendido no mês**, e o botão gigante **Abrir quadra** |
+| Abrir quadra (`/manager/abrir-quadra/`) | Horários livres do dia por quadra (abas com os próximos 7 dias). **Um toque num horário livre publica a partida** com os valores sugeridos (último aluguel da quadra, capacidade, goleiros e nível aberto); o preço por jogador aparece antes. Enquanto ninguém comprou, o horário mostra "Desfazer" |
 | Agenda | Grade semanal por quadra. O horário livre abre o formulário completo (aluguel, vagas, goleiros e nível, com prévia do preço); a partida publicada pode ser cancelada com reembolso automático |
 | Check-in | Lista de presença dos jogos de hoje e times sugeridos; o QR do comprovante abre a ficha do jogador |
-| Financeiro | Liberado, a liberar, transferido e vendido no mês, extrato e transferências |
-| Ajustes | Dados da arena, localização, mínimo de jogadores e quadras |
+| Financeiro | Liberado e a liberar; o mês, o extrato e as transferências ficam logo abaixo |
+| Ajustes | Quadras e dados da arena; localização e mínimo de jogadores em "Mais opções" |
 
 O "saldo a receber" soma o valor liberado e o a liberar: o liberado é
 transferido à arena a cada hora pela rotina `gerar_repasses`, então quase nunca
 fica parado.
+
+## App mobile (Flutter)
+
+O app do jogador para Android e iOS fica em [`mobile_app/`](mobile_app/README.md).
+Ele tem três abas: **Jogos** (o feed com "Garantir vaga" e Pix), **Minhas Peladas**
+(pelada de grupo, saldo e saque) e **Perfil**. O login é pelo celular e o app consome
+a mesma API REST abaixo. Para rodar contra o Django local:
+
+```bash
+cd mobile_app
+flutter pub get
+flutter run --dart-define=API_URL=http://10.0.2.2:8000/api/   # emulador Android
+```
 
 ## Stack
 
@@ -119,7 +134,8 @@ fica parado.
 | Linguagem | Python 3.15 |
 | Framework web | Django 5.2 LTS |
 | APIs B2C | Django REST Framework 3.18 (token e sessão) |
-| Site, app e portal | Templates Django + Tailwind CSS 4 (compilado pelo executável oficial, sem Node.js), fontes Archivo e Inter |
+| Site, app e portal | Templates Django + Tailwind CSS 4 (compilado pelo executável oficial, sem Node.js), fonte Inter |
+| App mobile | Flutter 3.47 (Dart 3.13), pacotes `http` e `shared_preferences` |
 | Banco de dados | PostgreSQL 18 (driver psycopg 3), configurado por `DATABASE_URL` |
 | Rotinas automáticas | APScheduler, num processo próprio (`manage.py agendador`) |
 | Configuração | Variáveis de ambiente via `python-dotenv` |
@@ -275,7 +291,7 @@ paginadas (`?page=`), com 20 itens por página.
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| GET | `/api/partidas/` | Partidas abertas que ainda não começaram. Filtros: `nivel`, `piso`, `arena` (slug), `data`, `de`, `ate` |
+| GET | `/api/partidas/` | Partidas abertas que ainda não começaram. Filtros: `nivel`, `piso`, `arena` (slug), `origem` (`arena`/`pelada`), `data`, `de`, `ate` |
 | GET | `/api/partidas/{id}/` | Detalhes, com os jogadores inscritos |
 | POST | `/api/partidas/{id}/inscricoes/` | Checkout: `posicao` (`linha`/`goleiro`) e `metodo_pagamento` (`pix`/`cartao`/`credito`) |
 | POST, DELETE | `/api/partidas/{id}/lista-de-espera/` | Entra ou sai da lista de espera |
@@ -285,6 +301,13 @@ paginadas (`?page=`), com 20 itens por página.
 | POST | `/api/minhas-inscricoes/{id}/simular-pagamento/` | Aprova o Pix pendente (só com o gateway simulado) |
 | GET | `/api/carteira/` | Crédito do jogador e movimentações |
 | GET | `/api/arenas/` | Arenas e quadras |
+| GET, POST | `/api/peladas/` | Peladas de grupo que o jogador organiza; o POST publica as vagas (`quadra`, `dia`, `hora_inicio`, `vagas_linha`, `valor_por_vaga`; o resto é opcional) |
+| POST | `/api/peladas/{id}/cancelar/` | Cancela as vagas da pelada e reembolsa quem comprou |
+| GET | `/api/organizador/carteira/` | Saldo do organizador (disponível e a liberar), chave Pix, saques e movimentações |
+| PUT | `/api/organizador/chave-pix/` | Cadastra a chave Pix (`tipo_chave_pix`, `chave_pix`) |
+| POST | `/api/organizador/saques/` | Saca via Pix todo o saldo disponível |
+| POST | `/api/auth/celular/` | Login pelo celular, passo 1: envia o código por SMS (em `DEBUG`, a resposta traz o código) |
+| POST | `/api/auth/celular/verificar/` | Passo 2: troca o código pelo token (cria o jogador no primeiro acesso) |
 | POST | `/api/auth/cadastro/` | Cria uma conta de jogador e devolve o token |
 | POST | `/api/auth/token/` | Troca usuário e senha por um token |
 | GET | `/api/me/` | Usuário autenticado (com o perfil de jogador) |
@@ -333,6 +356,7 @@ no `.env` de desenvolvimento) ou com `ARENAMATCH_PERMITIR_GATEWAY_SIMULADO=True`
 │   ├── validators.py       # CPF, CNPJ (inclusive alfanumérico) e telefone
 │   └── views.py            # Site, app do jogador (B2C) e Portal do Gestor (B2B)
 ├── config/                 # settings, urls, wsgi/asgi
+├── mobile_app/             # App Flutter (Android e iOS) que consome a API REST
 ├── .env.example            # Modelo de variáveis de ambiente (o .env real não é versionado)
 ├── Dockerfile              # Imagem de produção (Railway)
 ├── build.sh                # Build de produção (Render)
@@ -359,11 +383,14 @@ deploy no Render. Próximos passos:
 - Commits seguem o padrão [Conventional Commits](https://www.conventionalcommits.org/pt-br/)
   (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`).
 - Código em conformidade com a PEP 8, com type hints e docstrings.
-- Site, app do jogador e portal no mesmo tema escuro: fundo `zinc-950`, destaques
-  neon `lime-400` (ação e dinheiro) e `cyan-400` (informação), superfícies de vidro
-  (`vidro`) e títulos em Archivo extra-negrito (`titulo`).
-- Utilidades e componentes (`botao-neon`, `botao-vidro`, `campo`, `selo`) ficam em
-  `arena/estilos/entrada.css`. Crie um componente só quando o padrão se repetir em
+- Site, app do jogador, portal e app Flutter no mesmo tema claro e minimalista:
+  fundo `gray-50`, cartões brancos (`cartao`), texto `gray-900` e uma cor forte só
+  nos botões de ação, o verde bandeira `#00873A` (`bandeira-600`). Fonte Inter, com
+  títulos em extra-negrito (`titulo`).
+- Uma ação principal por tela (`botao`: `py-4 px-6 text-lg font-bold rounded-2xl`).
+  O secundário usa `botao-secundario` ou fica recolhido num `<details>` ("Mais opções").
+- Utilidades e componentes (`botao`, `botao-secundario`, `cartao`, `campo`, `opcao`,
+  `chip`, `selo`) ficam em `arena/estilos/entrada.css`. Crie um componente só quando o padrão se repetir em
   várias telas; o resto fica em classes utilitárias nos templates.
 - Regras de negócio ficam nos modelos (`clean()`), e `save()` sempre valida.
 - Segredos (`.env`) **nunca** são versionados.

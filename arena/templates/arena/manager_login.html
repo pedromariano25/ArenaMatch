@@ -3,21 +3,18 @@
 {% block title %}Entrar{% endblock %}
 
 {% block content %}
-<div class="mt-10 text-center">
-  <h1 class="titulo text-4xl text-white">Sua arena, cheia</h1>
-  <p class="mt-2 text-sm text-zinc-400">Agenda, partidas e dinheiro da sua arena num lugar só.</p>
-</div>
-<form method="post" class="vidro mt-8 space-y-5 rounded-3xl p-6">
+<h1 class="titulo mt-10 text-center text-3xl">Sua arena, cheia</h1>
+<form method="post" class="cartao mt-8 space-y-5 p-6">
   {% csrf_token %}
   {% if form.non_field_errors %}
-    <p class="rounded-2xl bg-rose-400/10 p-3 text-sm text-rose-200 ring-1 ring-rose-400/30 ring-inset">{{ form.non_field_errors|join:" " }}</p>
+    <p class="rounded-2xl bg-red-50 p-3 text-red-700">{{ form.non_field_errors|join:" " }}</p>
   {% endif %}
   {% include "arena/_campo.html" with campo=form.username %}
   {% include "arena/_campo.html" with campo=form.password %}
   <input type="hidden" name="next" value="{{ next }}">
-  <button type="submit" class="botao-neon w-full py-3.5 text-base">Entrar</button>
+  <button type="submit" class="botao w-full">Entrar</button>
 </form>
-<p class="mt-6 text-center text-sm text-zinc-500">
-  É jogador? <a href="{% url 'arena:vitrine' %}" class="font-semibold text-lime-300 hover:text-lime-200">Ache uma partida no app</a>
+<p class="mt-6 text-center text-gray-500">
+  É jogador? <a href="{% url 'arena:vitrine' %}" class="font-semibold text-gray-900 underline underline-offset-2">Ache uma partida</a>
 </p>
 {% endblock %}

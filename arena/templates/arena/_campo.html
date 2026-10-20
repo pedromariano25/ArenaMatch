@@ -1,7 +1,7 @@
 {% load arena_extras %}
 <div>
-  <label for="{{ campo.id_for_label }}" class="block text-sm font-semibold text-zinc-200">{{ campo.label }}</label>
-  <div class="mt-2">{{ campo|estilizar_escuro }}</div>
-  {% if campo.help_text %}<p class="mt-1.5 text-xs text-zinc-500">{{ campo.help_text|safe }}</p>{% endif %}
-  {% for erro in campo.errors %}<p class="mt-1.5 text-xs font-medium text-rose-300">{{ erro }}</p>{% endfor %}
+  <label for="{{ campo.id_for_label }}" class="block text-base font-semibold text-gray-900">{{ campo.label }}</label>
+  <div class="mt-2">{{ campo|estilizar }}</div>
+  {% if campo.help_text %}<p class="mt-1.5 text-sm text-gray-500">{{ campo.help_text|safe }}</p>{% endif %}
+  {% for erro in campo.errors %}<p class="mt-1.5 text-sm font-medium text-red-600">{{ erro }}</p>{% endfor %}
 </div>

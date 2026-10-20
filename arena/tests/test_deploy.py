@@ -15,7 +15,7 @@ class CssCompiladoTest(SimpleTestCase):
     def test_css_versionado_tem_os_componentes(self):
         """O deploy usa o CSS versionado se o Tailwind não puder ser baixado."""
         css = compilar_css.SAIDA.read_text(encoding="utf-8")
-        for seletor in (".botao-neon", ".botao-vidro", ".campo", ".vidro", ".titulo", ".selo"):
+        for seletor in (".botao", ".botao-secundario", ".campo", ".cartao", ".titulo", ".selo", ".chip-ativo"):
             self.assertIn(seletor, css)
         self.assertNotIn("@apply", css)
 

@@ -1,0 +1,43 @@
+{% extends "arena/manager_base.html" %}
+{% load arena_extras %}
+
+{% block title %}Abrir quadra{% endblock %}
+
+{% block content %}
+<a href="{% url 'gestor:dashboard' %}" class="inline-flex items-center gap-1.5 text-base font-semibold text-gray-500 hover:text-gray-900">{% icone "voltar" "size-4" %} Início</a>
+<h1 class="titulo mt-4 text-3xl sm:text-4xl">Abrir quadra</h1>
+<p class="mt-2 text-lg text-gray-500">Toque num horário livre: a partida entra à venda no app na hora.</p>
+
+<nav class="-mx-4 mt-6 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0" aria-label="Dia">
+  {% for item in dias %}
+    <a href="?dia={{ item.dia|date:'Y-m-d' }}"{% if item.dia == dia %} aria-current="date"{% endif %} class="chip flex-col gap-0 rounded-2xl px-4 py-2 {% if item.dia == dia %}chip-ativo{% endif %}">
+      <span>{{ item.dia|rotulo_dia_curto }}</span>
+      <span class="text-xs font-normal {% if item.dia == dia %}text-gray-300{% else %}text-gray-500{% endif %}">{{ item.dia|date:"d/m" }} · {{ item.ociosos }} livre{{ item.ociosos|pluralize }}</span>
+    </a>
+  {% endfor %}
+</nav>
+
+<div class="mt-6 space-y-4">
+  {% for item in quadras_do_dia %}
+    {% with quadra=item.quadra padrao=item.padrao %}
+    <section class="cartao p-4 sm:p-5" aria-labelledby="quadra-{{ quadra.pk }}">
+      <h2 id="quadra-{{ quadra.pk }}" class="text-lg font-bold">{{ quadra.nome_ou_numero }} <span class="font-normal text-gray-500">· {{ quadra.get_tipo_piso_display }}</span></h2>
+      <p class="mt-1 text-sm text-gray-500">{{ padrao.vagas_linha }} vagas a {{ padrao.preco_final_jogador|brl }}{% if padrao.vagas_goleiro %} e {{ padrao.vagas_goleiro }} de goleiro grátis{% endif %}. Lotando, você recebe {{ padrao.valor_total_aluguel|brl }}.</p>
+      <ul class="mt-4 grid grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] gap-2">
+        {% for celula in item.celulas %}
+          <li>{% include "arena/_manager_horario.html" %}</li>
+        {% empty %}
+          <li class="col-span-full py-4 text-center text-gray-500">Os horários de hoje nesta quadra já passaram.</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endwith %}
+  {% empty %}
+    <div class="cartao px-6 py-14 text-center">
+      <p class="text-xl font-bold">Cadastre a primeira quadra</p>
+      <p class="mx-auto mt-2 max-w-sm text-gray-500">Com as quadras cadastradas, os horários livres aparecem aqui.</p>
+      <a href="{% url 'gestor:configuracoes' %}" class="botao mt-6 w-full sm:w-auto">Cadastrar quadra</a>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

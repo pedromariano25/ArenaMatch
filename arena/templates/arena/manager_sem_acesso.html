@@ -3,20 +3,18 @@
 {% block title %}Acesso restrito{% endblock %}
 
 {% block content %}
-<div class="vidro mt-10 rounded-3xl p-6 text-center sm:p-8">
+<div class="cartao mt-10 p-6 text-center sm:p-8">
   {% if sem_arena %}
-    <h1 class="titulo text-2xl text-white">Nenhuma arena vinculada</h1>
-    <p class="mt-2 text-sm text-zinc-400">Sua conta de gestor ainda não está ligada a uma arena. Fale com o suporte do ArenaMatch para concluir o cadastro.</p>
+    <h1 class="titulo text-2xl">Nenhuma arena vinculada</h1>
+    <p class="mt-2 text-gray-500">Sua conta de gestor ainda não está ligada a uma arena. Fale com o suporte do ArenaMatch para concluir o cadastro.</p>
   {% else %}
-    <h1 class="titulo text-2xl text-white">Acesso restrito a gestores</h1>
-    <p class="mt-2 text-sm text-zinc-400">O portal é só para quem administra uma arena. Você entrou como {{ user.get_full_name|default:user.username }}.</p>
+    <h1 class="titulo text-2xl">Acesso restrito a gestores</h1>
+    <p class="mt-2 text-gray-500">O portal é só para quem administra uma arena. Você entrou como {{ user.get_full_name|default:user.username }}.</p>
   {% endif %}
-  <div class="mt-6 flex flex-wrap justify-center gap-3">
-    <a href="{% url 'arena:vitrine' %}" class="botao-vidro">Ir para o app</a>
-    <form method="post" action="{% url 'gestor:sair' %}">
-      {% csrf_token %}
-      <button type="submit" class="botao-neon">Entrar com outra conta</button>
-    </form>
-  </div>
+  <form method="post" action="{% url 'gestor:sair' %}" class="mt-6">
+    {% csrf_token %}
+    <button type="submit" class="botao w-full">Entrar com outra conta</button>
+  </form>
+  <a href="{% url 'arena:vitrine' %}" class="mt-4 inline-block font-semibold text-gray-500 hover:text-gray-900">Ir para o app</a>
 </div>
 {% endblock %}

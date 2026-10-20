@@ -5,171 +5,96 @@
 
 {% block content %}
 {% with horario=partida.time_slot quadra=partida.time_slot.court arena=partida.time_slot.court.arena %}
-<section class="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-10">
-  <a href="{% url 'arena:vitrine' %}" class="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-400 transition hover:text-white">{% icone "voltar" "size-4" %} Todos os jogos</a>
-  <div class="mt-5 flex flex-wrap items-center gap-2">
-    {% if partida.pelada_de_grupo %}
-      <span class="rounded-full bg-fuchsia-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-fuchsia-300 ring-1 ring-inset ring-fuchsia-400/30">Pelada de grupo</span>
-    {% else %}
-      <span class="inline-flex items-center gap-1 rounded-full bg-lime-400/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-lime-300 ring-1 ring-inset ring-lime-400/25">{% icone "escudo" "size-3.5" %} Arena parceira</span>
-    {% endif %}
-    <span class="rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ring-1 ring-inset {{ partida.nivel_competitividade|nivel_escuro }}">{{ partida.get_nivel_competitividade_display }} · {{ partida.rotulo_faixa }}</span>
-    <span class="rounded-full bg-white/5 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-300 ring-1 ring-inset ring-white/10">{{ quadra.get_tipo_piso_display }}</span>
-    {% if partida.jogo_confirmado and not partida.pelada_de_grupo %}
-      <span class="rounded-full bg-lime-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-lime-300 ring-1 ring-inset ring-lime-400/30">Jogo confirmado</span>
-    {% endif %}
-    {% if partida.status != "aberta" %}<span class="rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-zinc-200">{{ partida.get_status_display }}</span>{% endif %}
-  </div>
-  <h1 class="titulo mt-4 text-4xl leading-none text-white sm:text-6xl">{{ partida.nome_exibido }}</h1>
-  <p class="mt-3 flex items-center gap-1.5 text-zinc-400">{% icone "pin" "size-5 shrink-0 text-zinc-500" %} {% if partida.pelada_de_grupo %}{{ arena.nome }} · {% endif %}{{ quadra.nome_ou_numero }} · {{ arena.endereco_completo|local_resumido }}</p>
+<div class="mx-auto max-w-lg px-4 py-6 sm:py-10">
+  <a href="{% url 'arena:vitrine' %}" class="inline-flex items-center gap-1.5 text-base font-semibold text-gray-500 hover:text-gray-900">{% icone "voltar" "size-4" %} Jogos</a>
+
+  <p class="mt-6 flex items-center gap-1.5 text-sm text-gray-500">
+    {% if partida.pelada_de_grupo %}{% icone "jogadores" "size-4" %} Pelada de grupo{% else %}{% icone "escudo" "size-4" %} Arena parceira{% endif %}
+  </p>
+  <p class="mt-1 text-lg font-semibold text-gray-500">{{ horario.data|rotulo_dia }}, {{ horario.data|date:"d/m" }} · {{ horario.hora_inicio|time:"H:i" }}</p>
+  <h1 class="titulo mt-1 text-3xl sm:text-4xl">{{ partida.nome_exibido }}</h1>
+  <p class="mt-2 text-gray-500">{% if partida.pelada_de_grupo %}{{ arena.nome }} · {% endif %}{{ quadra.nome_ou_numero }} · {{ arena.endereco_completo|local_resumido }}</p>
   {% if partida.pelada_de_grupo %}
-    <div class="mt-5 flex max-w-xl items-center gap-3 rounded-2xl bg-fuchsia-400/10 p-4 ring-1 ring-inset ring-fuchsia-400/25">
-      {% include "arena/_avatar.html" with usuario=partida.organizador tamanho="size-11" texto="text-sm" mostrar_nivel=True %}
-      <p class="text-sm text-zinc-300"><span class="font-bold text-white">{{ partida.organizador.nome_publico }}</span> organiza esta pelada. O grupo já tem o horário e o time; faltam só as vagas abaixo para completar.</p>
-    </div>
+    <p class="mt-4 flex items-center gap-3 text-base">{% include "arena/_avatar.html" with usuario=partida.organizador tamanho="size-9" texto="text-xs" %} <span><strong>{{ partida.organizador.nome_publico }}</strong> organiza. O grupo já tem o time; faltam só estas vagas.</span></p>
   {% endif %}
-  <dl class="mt-6 grid grid-cols-3 gap-3 sm:max-w-xl">
-    <div class="vidro rounded-2xl p-4"><dt class="text-xs font-semibold uppercase tracking-widest text-zinc-500">Dia</dt><dd class="titulo mt-1 text-xl text-white">{{ horario.data|rotulo_dia }}</dd><dd class="text-xs text-zinc-400">{{ horario.data|date:"d \d\e F"|lower }}</dd></div>
-    <div class="vidro rounded-2xl p-4"><dt class="text-xs font-semibold uppercase tracking-widest text-zinc-500">Horário</dt><dd class="titulo mt-1 text-xl text-white">{{ horario.hora_inicio|time:"H:i" }}</dd><dd class="text-xs text-zinc-400">até {{ horario.hora_fim|time:"H:i" }}</dd></div>
-    <div class="vidro rounded-2xl p-4"><dt class="text-xs font-semibold uppercase tracking-widest text-zinc-500">{% if partida.pelada_de_grupo %}Vagas{% else %}Formato{% endif %}</dt><dd class="titulo mt-1 text-xl text-white">{{ partida.vagas_totais }}</dd><dd class="text-xs text-zinc-400">{% if partida.pelada_de_grupo %}à venda{% else %}jogadores{% endif %}{% if partida.vagas_goleiro %} ({{ partida.vagas_goleiro }} no gol){% endif %}</dd></div>
-  </dl>
-</section>
 
-<div class="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-3">
-  <div class="space-y-6 lg:col-span-2">
-    <section class="vidro rounded-3xl p-6">
-      <div class="flex items-center justify-between gap-4">
-        <h2 class="titulo text-xl text-white">Quem vai</h2>
-        <span class="text-sm font-semibold text-zinc-400">{{ partida.jogadores_confirmados }}/{{ partida.vagas_totais }}</span>
-      </div>
-      {% if partida.pelada_de_grupo %}
-        <p class="mt-1 text-sm text-fuchsia-200">O jogo acontece de qualquer jeito: o grupo já é fixo. Aqui aparecem só os avulsos que vão completar.</p>
-      {% elif partida.jogo_confirmado %}
-        <p class="mt-1 text-sm text-lime-300">Mínimo de {{ partida.minimo_jogadores }} atingido: o jogo vai acontecer.</p>
-      {% else %}
-        <p class="mt-1 text-sm text-amber-300">Faltam {{ partida.faltam_para_confirmar }} para confirmar o jogo (mínimo de {{ partida.minimo_jogadores }} até {{ partida.prazo_quorum|date:"d/m H:i" }}). Se não atingir, todo mundo é reembolsado.</p>
-      {% endif %}
+  {# O que importa para decidir: preço, vagas e o botão. #}
+  <section class="cartao mt-6 p-5">
+    <p class="titulo text-4xl tabular-nums">{{ partida.preco_final_jogador|brl }}</p>
+    <p class="mt-1 text-gray-500">por pessoa no Pix · {{ partida.preco_cartao|brl }} no cartão</p>
+    <p class="mt-3 text-base font-semibold">{% if livres_linha == 1 %}1 vaga{% else %}{{ livres_linha }} vagas{% endif %}{% if partida.vagas_goleiro %} · {% if livres_goleiro == 1 %}1 vaga de goleiro{% else %}{{ livres_goleiro }} vagas de goleiro{% endif %} ({% if partida.goleiro_gratis %}grátis{% else %}{{ partida.preco_goleiro|brl }}{% endif %}){% endif %}</p>
 
-      <h3 class="mt-6 text-xs font-bold uppercase tracking-widest text-zinc-500">Linha</h3>
-      <ul class="mt-3 grid grid-cols-4 gap-4 sm:grid-cols-6">
-        {% for jogador in linha %}
-          <li class="flex flex-col items-center gap-1.5 text-center">
-            {% include "arena/_avatar.html" with usuario=jogador tamanho="size-12" mostrar_nivel=True %}
-            <span class="w-full truncate text-xs font-medium text-zinc-300">{{ jogador.nome_publico }}</span>
-          </li>
-        {% endfor %}
-        {% for vaga in vagas_livres_linha %}
-          <li class="flex flex-col items-center gap-1.5 text-center">
-            <span class="grid size-12 place-items-center rounded-full border border-dashed border-white/15 text-zinc-600">{% icone "mais" "size-4" %}</span>
-            <span class="text-xs text-zinc-600">Livre</span>
-          </li>
-        {% endfor %}
-      </ul>
-
-      {% if partida.vagas_goleiro %}
-        <h3 class="mt-6 text-xs font-bold uppercase tracking-widest text-zinc-500">Goleiros <span class="text-cyan-300">· {% if partida.goleiro_gratis %}não pagam{% else %}{{ partida.preco_goleiro|brl }}{% endif %}</span></h3>
-        <ul class="mt-3 grid grid-cols-4 gap-4 sm:grid-cols-6">
-          {% for jogador in goleiros %}
-            <li class="flex flex-col items-center gap-1.5 text-center">
-              {% include "arena/_avatar.html" with usuario=jogador tamanho="size-12" mostrar_nivel=True %}
-              <span class="w-full truncate text-xs font-medium text-zinc-300">{{ jogador.nome_publico }}</span>
-            </li>
-          {% endfor %}
-          {% for vaga in vagas_livres_goleiro %}
-            <li class="flex flex-col items-center gap-1.5 text-center">
-              <span class="grid size-12 place-items-center rounded-full border border-dashed border-cyan-400/30 text-cyan-400/60">{% icone "mais" "size-4" %}</span>
-              <span class="text-xs text-zinc-600">Gol</span>
-            </li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </section>
-
-    <section class="vidro rounded-3xl p-6">
-      <h2 class="titulo text-xl text-white">Como funciona</h2>
-      <ul class="mt-4 space-y-3 text-sm text-zinc-300">
-        <li class="flex gap-3">{% icone "check" "size-5 shrink-0 text-lime-400" %} Pague pelo app (Pix ou cartão). A vaga é sua na hora{% if partida.vagas_goleiro and partida.goleiro_gratis %}; goleiro joga de graça{% endif %}.</li>
-        <li class="flex gap-3">{% icone "check" "size-5 shrink-0 text-lime-400" %} Na recepção, mostre o QR do comprovante para o check-in.</li>
-        <li class="flex gap-3">{% icone "check" "size-5 shrink-0 text-lime-400" %} Cancelou até 24h antes? O valor volta como crédito. Depois, dá para repassar a vaga para a lista de espera.</li>
-        <li class="flex gap-3">{% icone "check" "size-5 shrink-0 text-lime-400" %} Use calçado para {{ quadra.get_tipo_piso_display|lower }} e chegue 15 minutos antes.</li>
-      </ul>
-    </section>
-
-    <section class="vidro rounded-3xl p-6">
-      <h2 class="titulo text-xl text-white">Local</h2>
-      <p class="mt-2 text-sm text-zinc-300">{{ arena.endereco_completo }}</p>
-      <p class="mt-1 text-sm text-zinc-500">Funcionamento: {{ arena.hora_abertura|time:"H:i" }} às {{ arena.hora_fechamento|time:"H:i" }}</p>
-      <a href="{{ arena.endereco_completo|link_maps }}" target="_blank" rel="noopener" class="mt-4 inline-flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 text-sm font-semibold text-zinc-200 ring-1 ring-inset ring-white/10 transition hover:bg-white/10">{% icone "pin" "size-4 text-cyan-300" %} Abrir no mapa</a>
-    </section>
-  </div>
-
-  <aside class="lg:sticky lg:top-24 lg:self-start">
-    <div class="vidro rounded-3xl p-6">
-      <p class="text-xs font-bold uppercase tracking-widest text-zinc-500">Vaga de linha</p>
-      <p class="titulo mt-1 text-5xl text-white">{{ partida.preco_final_jogador|brl }}</p>
-      <p class="mt-1 text-sm text-zinc-400">no Pix · {{ partida.preco_cartao|brl }} no cartão{% if partida.vagas_goleiro %} · <span class="text-cyan-300">{% if partida.goleiro_gratis %}goleiro grátis{% else %}goleiro {{ partida.preco_goleiro|brl }}{% endif %}</span>{% endif %}</p>
-
-      <div class="mt-6">
-        <div class="flex justify-between text-sm">
-          <span class="text-zinc-400">{{ livres_linha }} vaga{{ livres_linha|pluralize }} de linha{% if partida.vagas_goleiro %} · {{ livres_goleiro }} no gol{% endif %}</span>
-        </div>
-        <div class="mt-2 h-2 overflow-hidden rounded-full bg-white/10" role="img" aria-label="{{ partida.percentual_ocupado }}% das vagas preenchidas">
-          <div class="h-full rounded-full bg-gradient-to-r {% if partida.pelada_de_grupo %}from-fuchsia-400{% else %}from-lime-400{% endif %} to-cyan-400" style="width: {{ partida.percentual_ocupado }}%"></div>
-        </div>
-      </div>
-
-      <div class="mt-6">
-        {% if minha_inscricao %}
-          <div class="rounded-2xl bg-lime-400/10 p-4 ring-1 ring-inset ring-lime-400/30">
-            {% if minha_inscricao.status == "confirmada" %}
-              <p class="flex items-center gap-2 font-bold text-lime-300">{% icone "check" "size-5" %} Você está dentro!</p>
-              <p class="mt-1 text-sm text-zinc-300">{% if minha_inscricao.em_repasse %}Sua vaga está em repasse para a lista de espera.{% else %}Vaga de {{ minha_inscricao.get_posicao_display|lower }} confirmada.{% endif %}</p>
-            {% else %}
-              <p class="flex items-center gap-2 font-bold text-amber-300">{% icone "relogio" "size-5" %} Vaga reservada</p>
-              <p class="mt-1 text-sm text-zinc-300">Conclua o pagamento até {{ minha_inscricao.reservada_ate|time:"H:i" }}.</p>
-            {% endif %}
-            <a href="{% url 'arena:inscricao' minha_inscricao.pk %}" class="mt-3 inline-flex text-sm font-bold text-white underline decoration-lime-400 underline-offset-4">Ver comprovante</a>
-          </div>
-        {% elif partida.pelada_de_grupo and partida.organizador_id == user.pk %}
-          <div class="rounded-2xl bg-fuchsia-400/10 p-4 ring-1 ring-inset ring-fuchsia-400/30">
-            <p class="font-bold text-fuchsia-200">Esta é a sua pelada</p>
-            <p class="mt-1 text-sm text-zinc-300">{{ partida.vagas_ocupadas }} de {{ partida.vagas_totais }} vaga{{ partida.vagas_totais|pluralize }} vendida{{ partida.vagas_totais|pluralize }}. Você recebe {{ partida.preco_vaga_base|brl }} por vaga de linha, no dia seguinte ao jogo.</p>
-            {% with texto="Falta gente na nossa pelada! Garante tua vaga pelo ArenaMatch: "|add:request.build_absolute_uri %}
-              <a href="https://wa.me/?text={{ texto|urlencode }}" target="_blank" rel="noopener" class="botao-neon mt-4 flex w-full">{% icone "conversa" "size-5" %} Chamar a galera no WhatsApp</a>
-            {% endwith %}
-            <a href="{% url 'arena:organizar' %}" class="mt-3 inline-flex text-sm font-bold text-white underline decoration-fuchsia-400 underline-offset-4">Ver minha carteira</a>
-          </div>
-        {% elif partida.aceita_inscricoes and motivo_inelegivel %}
-          <p class="rounded-2xl bg-amber-400/10 p-4 text-sm text-amber-200 ring-1 ring-inset ring-amber-400/30">{{ motivo_inelegivel }}</p>
-        {% elif partida.aceita_inscricoes %}
-          {% if user.is_authenticated and not user.is_player %}
-            <p class="rounded-2xl bg-amber-400/10 p-4 text-sm text-amber-200 ring-1 ring-inset ring-amber-400/30">Sua conta não é de jogador. Use uma conta de jogador para reservar vagas.</p>
-          {% else %}
-            <a href="{% url 'arena:checkout' partida.pk %}" class="botao-neon flex w-full py-4 text-base">Garantir vaga {% icone "seta" "size-5" %}</a>
-            {% if not user.is_authenticated %}<p class="mt-3 text-center text-xs text-zinc-500">Entre com seu celular em segundos, sem senha.</p>{% elif perfil_incompleto %}<p class="mt-3 text-center text-xs text-zinc-500">Antes, 3 perguntas rápidas sobre como você joga.</p>{% endif %}
-          {% endif %}
-        {% elif partida.status == "lotada" %}
-          <p class="rounded-full bg-white/5 px-5 py-4 text-center text-base font-bold text-zinc-400">Partida lotada</p>
-          {% if user.is_authenticated and user.is_player %}
-            <form method="post" action="{% url 'arena:lista_de_espera' partida.pk %}" class="mt-3">
-              {% csrf_token %}
-              {% if na_lista_de_espera %}
-                <input type="hidden" name="acao" value="sair">
-                <p class="text-center text-sm text-cyan-300">Você está na lista de espera. Avisamos por e-mail se abrir vaga.</p>
-                <button type="submit" class="mt-2 w-full text-sm font-semibold text-zinc-500 hover:text-white">Sair da lista</button>
-              {% else %}
-                <button type="submit" class="w-full rounded-full bg-cyan-400 px-5 py-3 text-sm font-black text-zinc-950 hover:bg-cyan-300">Entrar na lista de espera</button>
-              {% endif %}
-            </form>
-          {% else %}
-            <p class="mt-3 text-center text-xs text-zinc-500">Entre na sua conta para ficar na lista de espera.</p>
-          {% endif %}
+    <div class="mt-5">
+      {% if minha_inscricao %}
+        <p class="flex items-center gap-2 text-lg font-bold">{% if minha_inscricao.status == "confirmada" %}{% icone "check" "size-6 text-bandeira-600" %} Você está dentro!{% else %}{% icone "relogio" "size-6 text-amber-600" %} Vaga reservada até {{ minha_inscricao.reservada_ate|time:"H:i" }}{% endif %}</p>
+        {% if minha_inscricao.em_repasse %}<p class="mt-1 text-gray-500">Sua vaga está em repasse para a lista de espera.</p>{% endif %}
+        <a href="{% url 'arena:inscricao' minha_inscricao.pk %}" class="botao-secundario mt-4 w-full">{% if minha_inscricao.status == "confirmada" %}Ver comprovante{% else %}Concluir pagamento{% endif %}</a>
+      {% elif partida.pelada_de_grupo and partida.organizador_id == user.pk %}
+        <p class="text-lg font-bold">Esta é a sua pelada</p>
+        <p class="mt-1 text-gray-500">{{ partida.vagas_ocupadas }} de {{ partida.vagas_totais }} vagas vendidas. Você recebe {{ partida.preco_vaga_base|brl }} por vaga, no dia seguinte ao jogo.</p>
+        {% with texto="Falta gente na nossa pelada! Garante tua vaga pelo ArenaMatch: "|add:request.build_absolute_uri %}
+          <a href="https://wa.me/?text={{ texto|urlencode }}" target="_blank" rel="noopener" class="botao mt-4 w-full">Chamar a galera no WhatsApp</a>
+        {% endwith %}
+        <a href="{% url 'arena:organizar' %}" class="mt-3 block text-center text-base font-semibold text-gray-500 hover:text-gray-900">Ver minha carteira</a>
+      {% elif partida.aceita_inscricoes and motivo_inelegivel %}
+        <p class="rounded-2xl bg-amber-50 p-4 text-base text-amber-900">{{ motivo_inelegivel }}</p>
+      {% elif partida.aceita_inscricoes %}
+        {% if user.is_authenticated and not user.is_player %}
+          <p class="rounded-2xl bg-amber-50 p-4 text-base text-amber-900">Sua conta não é de jogador. Use uma conta de jogador para reservar vagas.</p>
         {% else %}
-          <p class="rounded-full bg-white/5 px-5 py-4 text-center text-base font-bold text-zinc-400">Inscrições encerradas</p>
+          <a href="{% url 'arena:checkout' partida.pk %}" class="botao w-full">Garantir vaga</a>
+          {% if not user.is_authenticated %}<p class="mt-3 text-center text-sm text-gray-500">Entre com o celular em segundos, sem senha.</p>{% elif perfil_incompleto %}<p class="mt-3 text-center text-sm text-gray-500">Antes, 3 perguntas rápidas sobre como você joga.</p>{% endif %}
         {% endif %}
-      </div>
+      {% elif partida.status == "lotada" %}
+        <p class="text-lg font-bold">Partida lotada</p>
+        {% if user.is_authenticated and user.is_player %}
+          <form method="post" action="{% url 'arena:lista_de_espera' partida.pk %}" class="mt-4">
+            {% csrf_token %}
+            {% if na_lista_de_espera %}
+              <input type="hidden" name="acao" value="sair">
+              <p class="text-gray-500">Você está na lista de espera. Avisamos por e-mail se abrir vaga.</p>
+              <button type="submit" class="botao-secundario mt-4 w-full">Sair da lista</button>
+            {% else %}
+              <button type="submit" class="botao w-full">Entrar na lista de espera</button>
+            {% endif %}
+          </form>
+        {% else %}
+          <p class="mt-1 text-gray-500">Entre na sua conta para ficar na lista de espera.</p>
+        {% endif %}
+      {% else %}
+        <p class="text-lg font-bold text-gray-500">Inscrições encerradas</p>
+      {% endif %}
     </div>
-  </aside>
+  </section>
+
+  <dl class="cartao mt-4 divide-y divide-gray-100 text-base">
+    <div class="flex justify-between gap-4 px-5 py-4"><dt class="text-gray-500">Horário</dt><dd class="font-semibold">{{ horario.intervalo }}</dd></div>
+    <div class="flex justify-between gap-4 px-5 py-4"><dt class="text-gray-500">Nível</dt><dd class="text-right font-semibold">{{ partida.get_nivel_competitividade_display }}</dd></div>
+    <div class="flex justify-between gap-4 px-5 py-4"><dt class="text-gray-500">Piso</dt><dd class="font-semibold">{{ quadra.get_tipo_piso_display }}</dd></div>
+    {% if not partida.pelada_de_grupo %}
+      <div class="flex justify-between gap-4 px-5 py-4"><dt class="text-gray-500">Jogo</dt><dd class="text-right font-semibold">{% if partida.jogo_confirmado %}Confirmado{% else %}Faltam {{ partida.faltam_para_confirmar }} até {{ partida.prazo_quorum|date:"d/m H:i" }}{% endif %}</dd></div>
+    {% endif %}
+    <div class="flex justify-between gap-4 px-5 py-4"><dt class="text-gray-500">Local</dt><dd class="text-right"><a href="{{ arena.endereco_completo|link_maps }}" target="_blank" rel="noopener" class="font-semibold underline underline-offset-4">Abrir no mapa</a></dd></div>
+  </dl>
+
+  <details class="cartao mt-4">
+    <summary class="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-base font-semibold">Quem vai ({{ partida.jogadores_confirmados }}) {% icone "proximo" "size-4 text-gray-400" %}</summary>
+    <ul class="space-y-3 px-5 pb-5">
+      {% for jogador in linha %}<li class="flex items-center gap-3">{% include "arena/_avatar.html" with usuario=jogador tamanho="size-9" texto="text-xs" %} {{ jogador.nome_publico }}</li>{% endfor %}
+      {% for jogador in goleiros %}<li class="flex items-center gap-3">{% include "arena/_avatar.html" with usuario=jogador tamanho="size-9" texto="text-xs" %} {{ jogador.nome_publico }} <span class="text-sm text-gray-500">goleiro</span></li>{% endfor %}
+      {% if not linha and not goleiros %}<li class="text-gray-500">{% if partida.pelada_de_grupo %}Ninguém de fora do grupo ainda.{% else %}Seja o primeiro a entrar.{% endif %}</li>{% endif %}
+    </ul>
+  </details>
+
+  <details class="cartao mt-4">
+    <summary class="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-base font-semibold">Regras {% icone "proximo" "size-4 text-gray-400" %}</summary>
+    <ul class="list-disc space-y-2 px-5 pb-5 pl-10 text-gray-600">
+      <li>Pague pelo app (Pix ou cartão). A vaga é sua na hora.</li>
+      <li>Cancelou até 24h antes? O valor volta como crédito. Depois, dá para repassar a vaga para a lista de espera.</li>
+      {% if partida.pelada_de_grupo %}<li>Se o organizador cancelar a pelada, todo mundo recebe o dinheiro de volta.</li>{% else %}<li>Se a partida não atingir o mínimo de jogadores, todo mundo recebe o dinheiro de volta.</li>{% endif %}
+      <li>Na recepção, mostre o QR do comprovante.</li>
+    </ul>
+  </details>
 </div>
 {% endwith %}
 {% endblock %}

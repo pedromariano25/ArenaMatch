@@ -83,7 +83,7 @@ class PortalBase(TestCase):
 
 
 class DashboardTest(PortalBase):
-    def test_tres_numeros_e_agenda_do_dia(self):
+    def _vender_uma_vaga_amanha(self):
         criar_horario(self.quadra, time(18), time(19), tipo_reserva=TipoReserva.MENSALISTA)
         partida = criar_partida(
             vagas=4,
@@ -92,8 +92,12 @@ class DashboardTest(PortalBase):
         )
         comprar(partida)
         comprar(partida, pagar=False)  # Pix ainda pendente
+        return partida
 
-        resposta = self.client.get(reverse("gestor:dashboard"), {"dia": amanha().isoformat()})
+    def test_inicio_so_tem_o_dinheiro_e_o_botao_abrir_quadra(self):
+        partida = self._vender_uma_vaga_amanha()
+
+        resposta = self.client.get(reverse("gestor:dashboard"))
         self.assertEqual(resposta.status_code, 200)
         indicadores = resposta.context["indicadores"]
         if partida.time_slot.data.month == timezone.localdate().month:
@@ -104,33 +108,41 @@ class DashboardTest(PortalBase):
         self.assertGreater(indicadores.horarios_ociosos, 0)
         # Cada horário ocioso vale o aluguel sugerido da quadra (o último praticado).
         self.assertEqual(indicadores.potencial_ocioso, indicadores.horarios_ociosos * Decimal("120.00"))
+        self.assertContains(resposta, "Saldo a receber")
+        self.assertContains(resposta, "Abrir quadra")
+        self.assertContains(resposta, f'href="{reverse("gestor:abrir_quadra")}"')
+        self.assertNotContains(resposta, "Publicar")
 
+    def test_abrir_quadra_mostra_os_horarios_do_dia(self):
+        self._vender_uma_vaga_amanha()
+
+        resposta = self.client.get(reverse("gestor:abrir_quadra"), {"dia": amanha().isoformat()})
+        self.assertEqual(resposta.status_code, 200)
         self.assertEqual(resposta.context["dia"], amanha())
         self.assertEqual(len(resposta.context["dias"]), 7)
         (quadra_do_dia,) = resposta.context["quadras_do_dia"]
         tipos = [celula.tipo for celula in quadra_do_dia.celulas]
         self.assertEqual(tipos, ["mensalista", "partida", "vago", "vago"])
         self.assertEqual(quadra_do_dia.padrao.valor_total_aluguel, Decimal("120.00"))
-        self.assertContains(resposta, "Saldo a receber")
         self.assertContains(resposta, "Publicar")
 
     def test_dia_invalido_ou_fora_da_semana_mostra_hoje(self):
         hoje = timezone.localdate()
         for dia in ("2026-13-45", "abc", (hoje + timedelta(days=30)).isoformat()):
-            resposta = self.client.get(reverse("gestor:dashboard"), {"dia": dia})
+            resposta = self.client.get(reverse("gestor:abrir_quadra"), {"dia": dia})
             self.assertEqual(resposta.context["dia"], hoje)
 
     def test_um_toque_publica_a_partida_padrao(self):
         """O formulário do horário livre, como está na tela, publica a partida sem mais nada."""
         aluguel = gestao.aluguel_sugerido(self.quadra)
-        pagina = self.client.get(reverse("gestor:dashboard"), {"dia": amanha().isoformat()})
+        pagina = self.client.get(reverse("gestor:abrir_quadra"), {"dia": amanha().isoformat()})
         acao = reverse("gestor:abrir_partida")
         formulario = re.search(rf'<form method="post" action="{acao}".*?</form>', pagina.content.decode(), re.S)
         dados = dict(re.findall(r'name="([^"]+)" value="([^"]*)"', formulario.group(0)))
 
         resposta = self.client.post(acao, dados)
         self.assertRedirects(
-            resposta, f"{reverse('gestor:dashboard')}?dia={amanha().isoformat()}#agenda", fetch_redirect_response=False
+            resposta, f"{reverse('gestor:abrir_quadra')}?dia={amanha().isoformat()}", fetch_redirect_response=False
         )
         partida = OpenMatch.objects.get()
         self.assertEqual(
@@ -174,7 +186,7 @@ class AgendaTest(PortalBase):
         tipos = [linha.celulas[coluna].tipo for linha in linhas]
         self.assertEqual(tipos, ["mensalista", "partida", "vago", "vago"])
         self.assertContains(resposta, "Transformar em Partida Aberta")
-        self.assertContains(resposta, "bg-cyan-400/15 text-cyan-300")
+        self.assertContains(resposta, "bg-sky-100 text-sky-900")
 
     def test_semana_invalida_usa_a_semana_atual(self):
         resposta = self.client.get(reverse("gestor:agenda"), {"semana": "2026-13-45"})

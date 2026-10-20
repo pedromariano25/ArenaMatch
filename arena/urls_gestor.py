@@ -13,6 +13,7 @@ urlpatterns = [
     path("login/", views.GestorLoginView.as_view(), name="login"),
     path("sair/", LogoutView.as_view(next_page="gestor:login"), name="sair"),
     path("dashboard/", views.GestorDashboardView.as_view(), name="dashboard"),
+    path("abrir-quadra/", views.GestorAbrirQuadraView.as_view(), name="abrir_quadra"),
     path("agenda/", views.GestorAgendaView.as_view(), name="agenda"),
     path("agenda/abrir-partida/", views.GestorAbrirPartidaView.as_view(), name="abrir_partida"),
     path(

@@ -175,7 +175,7 @@ class TelasDoJogadorTest(TestCase):
         )
         self.assertRedirects(resposta, "/")
         self.assertEqual(PlayerProfile.objects.get(jogador__username="bia").nivel, 4)
-        self.assertContains(self.client.get(reverse("arena:perfil")), "partidas jogadas")
+        self.assertContains(self.client.get(reverse("arena:perfil")), "Avançado")
 
     def test_checkout_sem_perfil_manda_para_o_questionario(self):
         partida = criar_partida()

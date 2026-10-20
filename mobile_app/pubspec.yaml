@@ -1,0 +1,26 @@
+name: arenamatch
+description: "App do ArenaMatch: jogos perto de você, pelada de grupo e perfil."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Calendário, relógio e textos do Material em português.
+  flutter_localizations:
+    sdk: flutter
+  # Chamadas à API Django (/api/).
+  http: ^1.6.0
+  # Guarda o token de acesso entre aberturas do app.
+  shared_preferences: ^2.5.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

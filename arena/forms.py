@@ -27,6 +27,7 @@ from .models import (
     TipoPiso,
     Wallet,
 )
+from .peladas import termino_padrao
 from .validators import validar_cpf
 
 
@@ -378,23 +379,20 @@ class QuadraParceiraField(forms.ModelChoiceField):
 
 
 class NovaPeladaForm(forms.Form):
-    """O organizador abre as vagas que faltam na pelada do grupo."""
+    """O organizador abre as vagas que faltam na pelada do grupo, num passo só.
 
-    titulo = forms.CharField(
-        label="Nome da pelada",
-        max_length=80,
-        widget=forms.TextInput(attrs={"placeholder": "Ex.: Pelada da Firma"}),
-    )
+    À vista: onde, quando, quantas vagas e quanto ele recebe. Nome, término, nível
+    e goleiro de aluguel ficam em "Mais opções", com padrões automáticos.
+    """
+
     quadra = QuadraParceiraField(
         label="Onde vocês jogam",
         queryset=Court.objects.select_related("arena").order_by("arena__nome", "nome_ou_numero"),
         empty_label="Escolha a arena e a quadra",
-        help_text="Só arenas parceiras do ArenaMatch, por enquanto.",
     )
     dia = forms.DateField(label="Dia", widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
-    hora_inicio = forms.TimeField(label="Começa", widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"))
-    hora_fim = forms.TimeField(label="Termina", widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"))
-    vagas_linha = forms.IntegerField(label="Vagas que faltam (linha)", min_value=1, max_value=20, initial=2)
+    hora_inicio = forms.TimeField(label="Horário", widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"))
+    vagas_linha = forms.IntegerField(label="Vagas", min_value=1, max_value=20, initial=2)
     valor_por_vaga = forms.DecimalField(
         label="Você recebe por vaga (R$)",
         min_value=Decimal("1.00"),
@@ -404,7 +402,26 @@ class NovaPeladaForm(forms.Form):
         initial=Decimal("15.00"),
         localize=True,
     )
-    vagas_goleiro = forms.IntegerField(label="Vagas de goleiro", min_value=0, max_value=2, initial=0)
+    # --- Mais opções (com padrão) ---
+    titulo = forms.CharField(
+        label="Nome da pelada",
+        max_length=80,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "Ex.: Pelada da Firma"}),
+    )
+    hora_fim = forms.TimeField(
+        label="Termina",
+        required=False,
+        widget=forms.TimeInput(attrs={"type": "time"}, format="%H:%M"),
+        help_text="Em branco: 1 hora depois do início.",
+    )
+    nivel = forms.ChoiceField(
+        label="Nível do jogo",
+        choices=NivelCompetitividade.choices,
+        initial=NivelCompetitividade.ABERTA,
+        required=False,
+    )
+    vagas_goleiro = forms.IntegerField(label="Vagas de goleiro", min_value=0, max_value=2, initial=0, required=False)
     valor_goleiro = forms.DecimalField(
         label="Você recebe por goleiro (R$)",
         min_value=Decimal("0"),
@@ -413,17 +430,21 @@ class NovaPeladaForm(forms.Form):
         decimal_places=2,
         initial=Decimal("0"),
         localize=True,
+        required=False,
         help_text="Zero: o goleiro joga de graça (o grupo banca).",
-    )
-    nivel = forms.ChoiceField(
-        label="Nível do jogo", choices=NivelCompetitividade.choices, initial=NivelCompetitividade.ABERTA
     )
 
     def clean(self) -> dict[str, Any]:
         dados = super().clean()
-        inicio, fim = dados.get("hora_inicio"), dados.get("hora_fim")
+        inicio = dados.get("hora_inicio")
+        if inicio and not dados.get("hora_fim"):
+            dados["hora_fim"] = termino_padrao(inicio)
+        fim = dados.get("hora_fim")
         if inicio and fim and fim <= inicio and fim != MEIA_NOITE:
             self.add_error("hora_fim", "O horário de término precisa ser depois do início.")
+        dados["nivel"] = dados.get("nivel") or NivelCompetitividade.ABERTA
+        dados["vagas_goleiro"] = dados.get("vagas_goleiro") or 0
+        dados["valor_goleiro"] = dados.get("valor_goleiro") or Decimal("0")
         return dados
 
     @staticmethod
